@@ -173,6 +173,53 @@ async function seedChat(home: string, title?: string) {
   }))
 }
 
+it('pans twelve retained conversations without changing their layout or wheel navigation', async () => {
+  const { page, errors } = await launchCanvasBrowser(seedChat)
+  const canvas = page.locator('[data-session-canvas]')
+  for (let index = 1; index < 12; index++) await canvas.getByRole('button', { name: 'New conversation', exact: true }).click()
+  await expect.poll(() => canvas.locator('[data-composer-input]').count()).toBe(12)
+  await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
+  await canvas.getByRole('button', { name: 'Actual size', exact: true }).click()
+  const viewport = canvas.getByLabel('Conversation canvas', { exact: true })
+  const world = canvas.locator('[data-canvas-world]')
+  const transform = () => world.evaluate(element => {
+    const value = new DOMMatrixReadOnly(getComputedStyle(element).transform)
+    return { x: value.e, y: value.f, scale: value.a }
+  })
+  const placements = () => canvas.locator('[data-canvas-session]').evaluateAll(elements =>
+    elements.map(element => ({ x: (element as HTMLElement).offsetLeft, y: (element as HTMLElement).offsetTop })))
+  const before = await transform(), layout = await placements()
+  const bounds = (await viewport.boundingBox())!, pointer = { x: bounds.x + 40, y: bounds.y + 40 }
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-canvas-session]') === null, pointer)).toBe(true)
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Performance.enable')
+  const metrics = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(({ name, value }) => [name, value]))
+  await page.mouse.move(pointer.x, pointer.y); await page.mouse.down()
+  const start = await metrics()
+  await page.evaluate(async ({ x, y }) => {
+    for (let step = 1; step <= 40; step++) {
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      document.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, pointerType: 'mouse', button: 0,
+        buttons: 1, clientX: x + step * 3, clientY: y + step * 2, bubbles: true, cancelable: true }))
+    }
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  }, pointer)
+  await page.mouse.up()
+  await expect.poll(transform).toEqual({ x: before.x + 120, y: before.y + 80, scale: before.scale })
+  const end = await metrics()
+  const costs = Object.fromEntries(['ScriptDuration', 'TaskDuration', 'LayoutDuration', 'RecalcStyleDuration', 'LayoutCount', 'RecalcStyleCount']
+    .map(name => [name, end[name]! - start[name]!]))
+  await writeFile(resolve(`.artifacts/canvas-pan-${process.env.CANVAS_PACKAGE_DIR ? 'before' : 'after'}.json`),
+    JSON.stringify({ nodes: 12, dragFrames: 40, costs }, null, 2) + '\n')
+  await cdp.detach()
+  expect(await placements()).toEqual(layout)
+  await page.mouse.wheel(15, 30)
+  await expect.poll(transform).toEqual({ x: before.x + 105, y: before.y + 50, scale: before.scale })
+  await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
+  await page.screenshot({ path: resolve('.artifacts/canvas-pan-many-nodes.png'), fullPage: true })
+  expect(errors).toEqual([])
+})
+
 it('keeps connectors attached while dragging at reduced zoom, after saving, and when cancelling', async () => {
   const { page, errors } = await launchCanvasBrowser(seedChat)
   const canvas = page.locator('[data-session-canvas]')

@@ -1,10 +1,10 @@
 /** Canvas, embedded conversations, and human-editable summary presentation. */
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
 import { Button, Input, MarkdownText, Toast, Tooltip, Menu, Modal, IconTrashOutlineRegular, IconBranchOutlineRegular, IconSearchOutlineRegular, IconChevronDownOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRenderFactories, PropsRenderSlots, PropsRuntime, FactoryComponentPropsOf } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { CanvasId } from '../types.ts'
+import type { CanvasId, CanvasNode } from '../types.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { DraftQuoteSource } from './quote-reference.ts'
 import type { CanvasFace } from './controller.ts'
@@ -14,6 +14,7 @@ import { subtreeIds } from '../subtree.ts'
 import { treeLayout } from './layout.ts'
 import type { NodeSize } from './layout.ts'
 import { branchAppearance } from './appearance.ts'
+import type { NodeAppearance } from './appearance.ts'
 import { zoomAt, stepZoom, fitCanvas, ZOOM_LEVELS } from './zoom.ts'
 import type { CanvasViewport } from './zoom.ts'
 import type { CanvasNavigation } from './navigation.ts'
@@ -53,6 +54,55 @@ export function CanvasToast({ useCanvas, dismissNotice, showSummary, t }: Face) 
     {...notice.kind === 'saved' || notice.kind === 'added' || notice.kind === 'removed' || notice.kind === 'mapped' ? { tone: 'success' as const } : { holdMs: 7000 }}
     {...sourceId === undefined ? {} : { actions: [{ label: t('viewSummary'), onClick: () => { showSummary(sourceId); dismissNotice() } }] }} />
 }
+
+type SceneProps = Pick<CardProps, 'scale' | 'onMove'> & {
+  readonly canvasId: CanvasId | undefined
+  readonly nodes: readonly CanvasNode[]
+  readonly sizes: ReadonlyMap<SessionId, NodeSize>
+  readonly appearance: ReadonlyMap<SessionId, NodeAppearance>
+  readonly focused: SessionId | undefined
+  readonly onFocus: (id: SessionId) => void
+  readonly onMeasure: NonNullable<CardProps['onMeasure']>
+  readonly renderSlot: PageProps['renderSlot']
+}
+
+/** A neighboring node move must not invalidate an unchanged retained conversation. */
+const CanvasNodeSlot = memo(function CanvasNodeSlot(props: Pick<SceneProps, 'scale' | 'onMove' | 'onFocus' | 'onMeasure' | 'renderSlot'> & {
+  readonly canvasId: CanvasId
+  readonly node: CanvasNode
+  readonly appearance: NodeAppearance | undefined
+  readonly focused: boolean
+}) {
+  const { canvasId, node, scale, focused, onMeasure, onMove, onFocus, renderSlot, appearance } = props
+  return <div className={css.tone} data-tone={appearance?.tone} data-node-level={appearance?.level}>
+    {renderSlot('session-canvas.node', { canvasId, node, scale, focused, onMeasure, onMove,
+      onFocus: () => { onFocus(node.sessionId) } })}
+  </div>
+})
+
+/** Viewport translation belongs to the outer transform, not the conversation render tree. */
+const CanvasScene = memo(function CanvasScene({ canvasId, nodes, sizes, appearance, focused, ...props }: SceneProps) {
+  const byId = useMemo(() => new Map(nodes.map(node => [node.sessionId, node])), [nodes])
+  const width = Math.max(2000, ...nodes.map(node => node.x + 600))
+  const height = Math.max(2000, ...nodes.map(node => node.y + 660))
+  return <>
+    <svg className={css.edges} width={width} height={height} aria-hidden="true">
+      {nodes.map((node) => {
+        const parent = node.parentId === null ? undefined : byId.get(node.parentId)
+        if (parent === undefined) return null
+        const right = node.x >= parent.x
+        const parentSize = sizes.get(parent.sessionId), size = sizes.get(node.sessionId)
+        const x = parent.x + (right ? parentSize?.width ?? 560 : 0), y = parent.y + (parentSize?.height ?? 56) / 2
+        const dx = node.x + (right ? 0 : size?.width ?? 560), dy = node.y + (size?.height ?? 56) / 2
+        return <path key={node.sessionId} data-canvas-edge={node.sessionId} className={css.tone}
+          data-tone={appearance.get(node.sessionId)?.tone} data-node-level={appearance.get(node.sessionId)?.level}
+          d={`M ${x} ${y} C ${(x + dx) / 2} ${y}, ${(x + dx) / 2} ${dy}, ${dx} ${dy}`} />
+      })}
+    </svg>
+    {canvasId !== undefined && nodes.map(node => <CanvasNodeSlot key={node.sessionId} {...props}
+      canvasId={canvasId} node={node} appearance={appearance.get(node.sessionId)} focused={focused === node.sessionId} />)}
+  </>
+})
 
 /** Pan and zoom a canvas; conversation scrolling and text selection remain local to cards. */
 export function CanvasPage(props: PageProps) {
@@ -98,6 +148,8 @@ export function CanvasPage(props: PageProps) {
   const [editingName, setEditingName] = useState(false)
   const [zoomMenu, setZoomMenu] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+  const currentView = useRef({ viewport, focus })
+  useLayoutEffect(() => { currentView.current = { viewport, focus } }, [viewport, focus])
   const fittedRequest = useRef(0)
   const summaryView = useRef<{ canvasId: CanvasId | null; previous: CanvasViewport; fitted: boolean } | null>(null)
   const unbindNavigation = useRef<(() => void) | null>(null)
@@ -146,7 +198,8 @@ export function CanvasPage(props: PageProps) {
   const select = (id: CanvasId): void => {
     props.selectCanvas(id); setMovement(null); setViewport({ x: 0, y: 0, scale: 1 }); setFocus(null); setEditingName(false)
   }
-  const focusNode = (sessionId: SessionId): void => {
+  const focusNode = useCallback((sessionId: SessionId): void => {
+    const { viewport, focus } = currentView.current
     if (focus?.sessionId === sessionId) { setViewport(focus.previous); setFocus(null); return }
     const element = viewportRef.current
     const card = element?.querySelector<HTMLElement>(`[data-canvas-session="${CSS.escape(sessionId)}"]`)
@@ -156,16 +209,12 @@ export function CanvasPage(props: PageProps) {
     setFocus({ sessionId, previous: focus?.previous ?? viewport })
     setViewport({ scale, x: (element.clientWidth - card.offsetWidth * scale) / 2 - card.offsetLeft * scale,
       y: (element.clientHeight - card.offsetHeight * scale) / 2 - card.offsetTop * scale })
-  }
+  }, [])
   const zoom = (scale: number): void => {
     const element = viewportRef.current
     if (element === null) return
     const center = { x: element.clientWidth / 2, y: element.clientHeight / 2 }
     setViewport(value => zoomAt(value, scale, center))
-  }
-  const extent = canvas === undefined ? { x: 2000, y: 2000 } : {
-    x: Math.max(2000, ...displayedNodes.map(node => node.x + 600)),
-    y: Math.max(2000, ...displayedNodes.map(node => node.y + 660)),
   }
   return <section className={css.page} data-session-canvas="">
     <header className={css.toolbar}>
@@ -205,26 +254,9 @@ export function CanvasPage(props: PageProps) {
         </Button>
       </div>}
       <div className={css.world} data-canvas-world="" style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}>
-        <svg className={css.edges} width={extent.x} height={extent.y} aria-hidden="true">
-          {displayedNodes.map((node) => {
-            const parent = displayedNodes.find(value => value.sessionId === node.parentId)
-            if (parent === undefined) return null
-            const right = node.x >= parent.x
-            const parentSize = measurements.sizes.get(parent.sessionId), size = measurements.sizes.get(node.sessionId)
-            const x = parent.x + (right ? parentSize?.width ?? 560 : 0), y = parent.y + (parentSize?.height ?? 56) / 2
-            const dx = node.x + (right ? 0 : size?.width ?? 560), dy = node.y + (size?.height ?? 56) / 2
-            return <path key={node.sessionId} data-canvas-edge={node.sessionId} className={css.tone}
-              data-tone={appearance.get(node.sessionId)?.tone}
-              data-node-level={appearance.get(node.sessionId)?.level}
-              d={`M ${x} ${y} C ${(x + dx) / 2} ${y}, ${(x + dx) / 2} ${dy}, ${dx} ${dy}`} />
-          })}
-        </svg>
-        {canvas !== undefined && displayedNodes.map(node => <div key={node.sessionId} className={css.tone}
-          data-tone={appearance.get(node.sessionId)?.tone} data-node-level={appearance.get(node.sessionId)?.level}>
-          {renderSlot('session-canvas.node', {
-            canvasId: canvas.id, node, scale: viewport.scale, focused: focus?.sessionId === node.sessionId, onMeasure, onMove,
-            onFocus: () => { focusNode(node.sessionId) },
-          })}</div>)}
+        <CanvasScene canvasId={canvas?.id} nodes={displayedNodes} sizes={measurements.sizes} appearance={appearance}
+          scale={viewport.scale} focused={focus?.sessionId} onMeasure={onMeasure} onMove={onMove}
+          onFocus={focusNode} renderSlot={renderSlot} />
       </div>
       <nav className={css.zoom} data-canvas-navigation="" aria-label={t('navigation')}>
         <Button size="sm" aria-label={t('zoomOut')} disabled={viewport.scale <= 0.1} onClick={() => { zoom(stepZoom(viewport.scale, -1)) }}>−</Button>
