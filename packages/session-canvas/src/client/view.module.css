@@ -25,7 +25,6 @@
 }
 
 .page { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-base); }
-.content :global([data-canvas-quote-source]) { outline: 2px solid var(--canvas-quote-color, var(--dsw-alias-state-business-primary)); outline-offset: 4px; }
 .page :global([data-canvas-quote-host]) { position: relative; }
 .page :global([data-canvas-quote-overlay]) { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
 .page :global([data-canvas-quote-overlay] > span) { position: absolute; pointer-events: none; border-radius: 2px; }
@@ -65,7 +64,7 @@
 .cardHeader:active { cursor: grabbing; }
 .cardHeader button[aria-pressed="true"] { background: var(--dsw-alias-diagram-surface); color: var(--dsw-alias-label-primary); box-shadow: 0 1px 3px color-mix(in srgb, var(--canvas-branch) 12%, transparent); }
 .tone[data-node-level="root"] .cardHeader button[aria-pressed="true"] { color: var(--dsw-alias-diagram-root); background: var(--dsw-alias-diagram-root-label); }
-.headerSpace { flex: 1; }
+.nodeTitle { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; font-weight: 500; }
 .focusIcon { position: relative; display: flex; }
 .focusIcon > span { position: absolute; top: 0; left: 4px; font-size: 10px; line-height: 14px; }
 .card[data-focused] { z-index: 2; outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 3px; }

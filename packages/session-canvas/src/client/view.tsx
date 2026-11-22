@@ -291,7 +291,7 @@ export function CanvasCard(props: CardProps) {
       }}
       onPointerUp={stopDrag} onPointerCancel={() => { gesture.current = null; setPosition(null) }}>
       <IconBranchOutlineRegular size={16} />
-      <span className={css.headerSpace} />
+      <span className={css.nodeTitle} title={node.title}>{node.title}</span>
       <Button size="sm" aria-pressed={node.mode === 'chat'} onClick={() => { updateNode({ canvasId, sessionId: node.sessionId, mode: 'chat' }) }}>{t('chat')}</Button>
       <Button size="sm" aria-pressed={node.mode === 'summary'} onClick={() => { updateNode({ canvasId, sessionId: node.sessionId, mode: 'summary' }) }}>{t('summary')}</Button>
       <Button size="sm" aria-label={t(node.collapsed ? 'expand' : 'collapse')} onClick={() => { updateNode({ canvasId, sessionId: node.sessionId, collapsed: !node.collapsed }) }}>{node.collapsed ? '+' : '−'}</Button>
