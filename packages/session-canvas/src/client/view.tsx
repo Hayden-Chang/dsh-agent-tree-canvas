@@ -382,7 +382,6 @@ export function CanvasContent(props: ContentProps) {
   const generating = state.generating.includes(sessionId)
   const [editing, setEditing] = useState(false), [history, setHistory] = useState(false)
   const summarySelection = useSummarySelection(node.mode === 'summary' || summaryOnly)
-  const [forkSeq, setForkSeq] = useState<number | null>(null)
   const active = conversation.activeTargets.size > 0 || !session.blank || session.running
   const phase = active ? 'active' : session.openState === 'loading' ? 'settling' : 'hero'
   const labels = { code: { copyLabel: t('copy'), copiedLabel: t('copied') }, footnotes: t('footnotes') }
@@ -392,14 +391,6 @@ export function CanvasContent(props: ContentProps) {
     props.revealSource(sessionId, turn, previous === undefined ? 0 : previous.seq + 1)
   }
   return <div ref={attachSource} className={css.content}>
-    <div className={css.nodeMeta} hidden={summaryOnly}>
-      <span>{node.parentId === null ? t('root') : t('inherited', { seq: node.forkSeq ?? 0 })}</span>
-      <select aria-label={t('forkPoint')} value={forkSeq ?? ''} onChange={(event) => { setForkSeq(event.target.value === '' ? null : Number(event.target.value)) }}>
-        <option value="">{t('forkLatest')}</option>
-        {transcript?.turns.filter(turn => turn.seq >= transcript.inheritedEventCount).map(turn => <option key={turn.seq} value={turn.seq}>{t('turn', { turn: turn.turn })}</option>)}
-      </select>
-      <Button size="sm" disabled={state.busy || !transcript?.turns.length} onClick={() => { props.fork(canvasId, sessionId, forkSeq, `${node.title} · ${t('fork')}`) }}>{t('fork')}</Button>
-    </div>
     <div className={css.chat} hidden={node.mode !== 'chat' || summaryOnly}>
       {renderFactorySlot('conversation.content', { variant: 'embedded', phase, hero: false }, { slots: { views: FixedChat } })}
     </div>

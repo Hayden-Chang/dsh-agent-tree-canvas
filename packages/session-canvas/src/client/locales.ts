@@ -14,7 +14,7 @@ export const en = {
   deleteUnavailable: 'These sessions cannot be deleted safely. Restart DSH and retry; permanent deletion requires the standard local session store.',
   panel: 'Session canvas', newCanvas: 'New canvas', canvasName: 'Canvas name', newNode: 'New conversation',
   chat: 'Chat', summary: 'Summary', allChat: 'All chats', allSummary: 'All summaries', arrange: 'Auto layout',
-  fork: 'Branch', forkLatest: 'Branch from latest turn', forkPoint: 'Branch point', turn: 'Turn {turn}',
+  fork: 'Branch', turn: 'Turn {turn}',
   collapse: 'Collapse', expand: 'Expand', rename: 'Rename', nodeName: 'Conversation name',
   renameNode: 'Edit conversation name', renameFailed: 'Could not save the conversation name. Your edit is retained; please retry.',
   generate: 'Generate summary', regenerate: 'Update summary', generating: 'Generating…', cancel: 'Cancel',
@@ -34,7 +34,6 @@ export const en = {
   conflict: 'A newer summary exists. Your draft is retained; reload the saved version before merging your edits.',
   zoomIn: 'Zoom in', zoomOut: 'Zoom out', actualSize: 'Actual size', fitMap: 'Fit map', zoomLevel: 'Zoom level', navigation: 'Canvas navigation', canvas: 'Conversation canvas',
   focusNode: 'Focus and enlarge node', unfocusNode: 'Return to previous view', saving: 'Saving…',
-  inherited: 'Snapshot from parent · event {seq}', root: 'Root conversation',
   copy: 'Copy', copied: 'Copied', footnotes: 'Footnotes', close: 'Close',
   selectCanvas: 'Choose canvas', refresh: 'Refresh', discardEdits: 'Discard edits and load saved version',
 } as const
@@ -54,7 +53,7 @@ export const zh: Record<CanvasKey, string> = {
   deleteUnavailable: '当前会话无法安全删除。请重启 DSH 后重试；彻底删除需要标准的本地会话存储。',
   panel: '会话画布', newCanvas: '新建画布', canvasName: '画布名称', newNode: '新建对话',
   chat: '对话', summary: '总结', allChat: '全部对话', allSummary: '全部总结', arrange: '自动排列',
-  fork: '分叉', forkLatest: '从最新一轮分叉', forkPoint: '分叉位置', turn: '第 {turn} 轮',
+  fork: '分叉', turn: '第 {turn} 轮',
   collapse: '收起', expand: '展开', rename: '重命名', nodeName: '对话名称',
   renameNode: '编辑对话名称', renameFailed: '名称保存失败，编辑内容已保留，请重试。',
   generate: '生成总结', regenerate: '更新总结', generating: '正在生成…', cancel: '取消',
@@ -74,7 +73,6 @@ export const zh: Record<CanvasKey, string> = {
   conflict: '总结已有新版本。你的草稿已保留，请加载已保存版本后合并修改。',
   zoomIn: '放大', zoomOut: '缩小', actualSize: '实际大小', fitMap: '适合全图', zoomLevel: '缩放比例', navigation: '画布导航', canvas: '对话画布',
   focusNode: '聚焦并放大节点', unfocusNode: '恢复之前的视野', saving: '正在保存…',
-  inherited: '继承父节点快照 · 事件 {seq}', root: '根对话',
   copy: '复制', copied: '已复制', footnotes: '脚注', close: '关闭',
   selectCanvas: '选择画布', refresh: '刷新', discardEdits: '放弃修改并加载已保存版本',
 }
