@@ -1,0 +1,47 @@
+- text: Session canvas
+- combobox "Choose canvas":
+  - option "New canvas" [selected]
+- button "New canvas"
+- button "Rename"
+- button "New conversation"
+- button "All chats"
+- button "All summaries"
+- button "Auto layout"
+- button "Refresh"
+- article "New conversation":
+  - button "Delete node"
+  - paragraph: 笔记中的主题：只整理选中的原文。
+- article "评测维度":
+  - button "Delete node"
+  - paragraph: 评测维度
+- article "**结果**":
+  - button "Delete node"
+  - paragraph:
+    - strong: 结果
+- article "pass@k：至少一次成功":
+  - button "Delete node"
+  - paragraph: pass@k：至少一次成功
+- article "pass^k：全部成功的稳定性":
+  - button "Delete node"
+  - paragraph: pass^k：全部成功的稳定性
+- article "过程：步数":
+  - button "Delete node"
+  - paragraph: 过程：步数
+- article "关键原则：**结果指标不可省，过程指标不可滥**。":
+  - button "Delete node"
+  - paragraph:
+    - text: 关键原则：
+    - strong: 结果指标不可省，过程指标不可滥
+    - text: 。
+- article "笔记中的主题":
+  - button "Delete node"
+  - paragraph: 笔记中的主题
+- article "只整理选中的原文":
+  - button "Delete node"
+  - paragraph: 只整理选中的原文
+- navigation "Canvas navigation":
+  - button "Zoom out": −
+  - button "Zoom level": 95%
+  - button "Zoom in": +
+  - button "Actual size"
+  - button "Fit map"

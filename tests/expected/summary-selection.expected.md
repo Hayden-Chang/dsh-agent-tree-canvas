@@ -1,0 +1,4 @@
+- menu:
+  - menuitem "Quote text"
+  - menuitem "Quote in child conversation"
+  - menuitem "Generate mind map"

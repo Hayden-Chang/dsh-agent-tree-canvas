@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": [
+    "packages/session-canvas/src/client/**/*.ts",
+    "packages/session-canvas/src/client/**/*.tsx",
+    "packages/session-canvas/tests/*.client.spec.ts",
+    "packages/session-canvas/src/css-modules.d.ts"
+  ]
+}
