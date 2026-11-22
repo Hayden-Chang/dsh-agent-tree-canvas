@@ -27,3 +27,17 @@ it('validates explicit no-subdivision results instead of treating them as failur
   expect(() => result.parse(canvas)).toThrow()
   expect(() => result.parse({ canvas, createdSessionIds: [1] })).toThrow()
 })
+
+it('accepts legacy forks and validates durable chat and summary quote origins on the wire', () => {
+  const fork = TYPERT_REMOTE.methods['sessionCanvas/fork']!
+  const request = { canvasId: 'canvas', sessionId: 'parent', atSeq: null, title: 'Child' }
+  expect(fork.input().create().parse(request)).toEqual(request)
+  for (const source of [{ sessionId: 'parent', seq: 6, turn: 1, offset: 4 }, { kind: 'summary', sessionId: 'parent', offset: 12 }]) {
+    const origin = { text: 'Quoted text', source }
+    expect(fork.input().create().parse({ ...request, origin })).toEqual({ ...request, origin })
+    const node = { sessionId: 'child', parentId: 'parent', forkSeq: null, title: 'Child', x: 0, y: 0, collapsed: false, mode: 'chat', origin }
+    expect(fork.result.create().parse({ id: 'canvas', title: 'Canvas', revision: 1, nodes: [node] })).toMatchObject({ nodes: [{ origin }] })
+    expect(() => fork.input().create().parse({ ...request, origin: { ...origin, source: { ...source, offset: -1 } } })).toThrow()
+    expect(() => fork.input().create().parse({ ...request, origin: { ...origin, text: '' } })).toThrow()
+  }
+})

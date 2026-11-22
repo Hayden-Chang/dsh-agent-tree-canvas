@@ -255,6 +255,7 @@ export function CanvasCard(props: CardProps) {
     observer.observe(element)
     return () => { observer.disconnect() }
   }, [node.sessionId, onMeasure, summaryOnly])
+  const dragged = useRef(false)
   const gesture = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
   const point = position ?? node
   const stopDrag = (event: PointerEvent<HTMLElement>): void => {
@@ -267,7 +268,13 @@ export function CanvasCard(props: CardProps) {
     setPosition(null)
   }
   return <article ref={cardRef} className={css.card} aria-label={node.title} data-canvas-session={node.sessionId}
-    data-summary-only={summaryOnly || undefined} data-focused={focused || undefined} style={{ left: point.x, top: point.y }}>
+    data-summary-only={summaryOnly || undefined} data-focused={focused || undefined} style={{ left: point.x, top: point.y }}
+    onPointerDown={() => { dragged.current = false }}
+    onClick={(event) => {
+      if (dragged.current || !window.getSelection()?.isCollapsed) return
+      if (event.target instanceof Element && event.target.closest('button, a, select, [role="button"], [role="menuitem"]')) return
+      props.followParent(node.sessionId)
+    }}>
     <header className={css.cardHeader} hidden={summaryOnly}
       onPointerDown={(event) => {
         if (event.button !== 0 || (event.target instanceof Element && event.target.closest('button,input'))) return
@@ -276,6 +283,7 @@ export function CanvasCard(props: CardProps) {
       }}
       onPointerMove={(event) => {
         const start = gesture.current
+        if (start !== null && Math.hypot(event.clientX - start.px, event.clientY - start.py) > 3) dragged.current = true
         if (start !== null) setPosition({
           x: Math.max(0, start.x + (event.clientX - start.px) / scale),
           y: Math.max(0, start.y + (event.clientY - start.py) / scale),
@@ -360,6 +368,8 @@ export function CanvasTurns({ useProjection, revealSource, sessionId, t }: Facto
 /** Embedded Chat and Summary remain separate views of one durable Session. */
 export function CanvasContent(props: ContentProps) {
   const { node, canvasId, sessionId, useProjection, useSession, useConversation, useCanvas, renderFactorySlot, t } = props
+  const attachSource = useCallback((element: HTMLDivElement | null) => { props.registerSourceRoot(sessionId, element) },
+    [props.registerSourceRoot, sessionId])
   const session = useSession(value => value)
   const conversation = useConversation(value => value)
   const transcript = useProjection('sessionCanvas')
@@ -379,7 +389,7 @@ export function CanvasContent(props: ContentProps) {
     const previous = transcript?.turns.findLast(value => turn !== null && value.turn < turn)
     props.revealSource(sessionId, turn, previous === undefined ? 0 : previous.seq + 1)
   }
-  return <div ref={(element) => { props.registerSourceRoot(sessionId, element) }} className={css.content}>
+  return <div ref={attachSource} className={css.content}>
     <div className={css.nodeMeta} hidden={summaryOnly}>
       <span>{node.parentId === null ? t('root') : t('inherited', { seq: node.forkSeq ?? 0 })}</span>
       <select aria-label={t('forkPoint')} value={forkSeq ?? ''} onChange={(event) => { setForkSeq(event.target.value === '' ? null : Number(event.target.value)) }}>

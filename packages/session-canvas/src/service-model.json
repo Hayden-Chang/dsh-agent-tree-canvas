@@ -39,9 +39,9 @@
         {
           "kind": "method",
           "name": "fork",
-          "signature": "@Remote async fork(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string): Promise<CanvasDocument>",
+          "signature": "@Remote async fork(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string, origin?: QuoteOrigin): Promise<CanvasDocument>",
           "summary": "Copy a completed-turn prefix into an independently evolving child Session.",
-          "jsDoc": "/**\n * Copy a completed-turn prefix into an independently evolving child Session.\n * @param canvasId - owning canvas.\n * @param sessionId - parent node.\n * @param atSeq - inclusive completed-turn boundary, or null for the latest completed turn; no completed turns starts an empty child.\n * @param title - child label.\n * @returns the saved canvas; the child's summary starts empty.\n */"
+          "jsDoc": "/**\n * Copy a completed-turn prefix into an independently evolving child Session.\n * @param canvasId - owning canvas.\n * @param sessionId - parent node.\n * @param atSeq - inclusive completed-turn boundary, or null for the latest completed turn; no completed turns starts an empty child.\n * @param title - child label.\n * @param origin - selected text and its parent address, independent of the child draft.\n * @returns the saved canvas; the child's summary starts empty.\n */"
         },
         {
           "kind": "method",

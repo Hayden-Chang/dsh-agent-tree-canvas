@@ -719,3 +719,29 @@ it('retains a deletion job when enabled search reconciliation fails after remova
   expect((await api.removeNode(canvas.id, id)).nodes).toEqual([])
   expect(() => api.summary(id)).toThrow()
 })
+
+
+it('retains a child quote origin across reloads without adding it to model history', async () => {
+  const { api, ctx, plugin } = await fixture()
+  const canvas = await api.addRoot((await api.create('Quote origins')).id, 'Parent')
+  const parent = canvas.nodes[0]!.sessionId
+  const origin = { text: 'Selected summary', source: { kind: 'summary' as const, sessionId: parent, offset: 19 } }
+  const forked = await Reflect.apply(api.fork.bind(api), null, [canvas.id, parent, null, 'Child', origin])
+  expect(forked.nodes.at(-1)).toMatchObject({ origin })
+  const child = forked.nodes.at(-1)!.sessionId
+  expect(ctx.sessions.get(child)!.snapshotEvents()).toEqual([])
+  await plugin.dispose()
+  await ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
+  expect(ctx.sessionCanvas.list()[0]!.nodes.at(-1)).toMatchObject({ sessionId: child, origin })
+})
+
+it('rejects a quote from a different parent before creating a child', async () => {
+  const { api, created } = await fixture()
+  const canvas = await api.addRoot((await api.create('Origins')).id, 'Parent')
+  const count = created.mock.calls.length
+  await expect(api.fork(canvas.id, canvas.nodes[0]!.sessionId, null, 'Child', {
+    text: 'Wrong parent', source: { kind: 'summary', sessionId: SessionId('elsewhere'), offset: 0 },
+  })).rejects.toMatchObject({ code: 'canvas/invalid' })
+  expect(created).toHaveBeenCalledTimes(count)
+  expect(api.list()[0]!.nodes).toHaveLength(1)
+})

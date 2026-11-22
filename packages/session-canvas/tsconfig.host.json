@@ -10,6 +10,7 @@
     "src/zoom-options.ts",
     "src/index.ts",
     "src/types.ts",
+    "src/quote.ts",
     "src/schema.ts",
     "src/projection.ts",
     "src/summary.ts",

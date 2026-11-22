@@ -18,6 +18,7 @@ import { ZoomOptions } from './zoom-options.ts'
 import { AutosaveDelayMs } from './summary-options.ts'
 import { CanvasSessions } from './session-lifecycle.ts'
 import { canvasDomain, deletionDomain, emptySummary } from './schema.ts'
+import { quoteOriginSchema } from './quote.ts'
 import { transcriptProjection } from './projection.ts'
 import { appendPluginRecord } from '@deepseek-ai/dsh-session'
 import { generateMindmap, mindmapProjection, mindmapMessage } from './mindmap.ts'
@@ -26,7 +27,7 @@ import type { MindmapState, MindmapLimits } from './mindmap.ts'
 import { generateSummary } from './summary.ts'
 import type {
   CanvasDocument, CanvasId, CanvasMode, CanvasNode, CanvasTranscript, NodePlacement,
-  SaveSummaryRequest, SummaryDocument, SummaryVersion, UpdateNodeRequest,
+  SaveSummaryRequest, SummaryDocument, SummaryVersion, UpdateNodeRequest, QuoteOrigin,
 } from './types.ts'
 
 /** Validated plugin resource bounds and the default conversation persona. */
@@ -220,18 +221,24 @@ export default class SessionCanvas extends TypertRemoteService {
    * @param sessionId - parent node.
    * @param atSeq - inclusive completed-turn boundary, or null for the latest completed turn; no completed turns starts an empty child.
    * @param title - child label.
+   * @param origin - selected text and its parent address, independent of the child draft.
    * @returns the saved canvas; the child's summary starts empty.
    */
   @Remote
-  async fork(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string): Promise<CanvasDocument> {
+  async fork(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string, origin?: QuoteOrigin): Promise<CanvasDocument> {
     this.assertCanvasAvailable(canvasId)
-    const work = this.forkNode(canvasId, sessionId, atSeq, title)
+    if (origin !== undefined) {
+      origin = quoteOriginSchema.parse(origin)
+      this.validateText(origin.text)
+      if (origin.source.sessionId !== sessionId) throw new RemoteError('canvas/invalid', 'Quote must belong to the parent', { reason: 'quote-parent-mismatch' })
+    }
+    const work = this.forkNode(canvasId, sessionId, atSeq, title, origin)
     const tasks = this.branches.get(canvasId) ?? new Set<Promise<CanvasDocument>>()
     tasks.add(work); this.branches.set(canvasId, tasks)
     try { return await work } finally { tasks.delete(work); if (tasks.size === 0) this.branches.delete(canvasId) }
   }
 
-  private async forkNode(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string): Promise<CanvasDocument> {
+  private async forkNode(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string, origin?: QuoteOrigin): Promise<CanvasDocument> {
     const parent = this.node(canvasId, sessionId)
     using observation = await this.ctx.sessionQuery.observeSession(sessionId)
     const transcript = observation.projections?.values.sessionCanvas
@@ -254,7 +261,7 @@ export default class SessionCanvas extends TypertRemoteService {
     }
     const siblings = this.canvas(canvasId).nodes.filter(node => node.parentId === sessionId).length
     return await this.attach(canvasId, { sessionId: child.sessionId, parentId: sessionId, forkSeq: boundary ?? null,
-      title, x: parent.x + 640, y: parent.y + siblings * 700, mode: 'chat', collapsed: false })
+      title, x: parent.x + 640, y: parent.y + siblings * 700, mode: 'chat', collapsed: false, ...origin === undefined ? {} : { origin } })
   }
 
   /**

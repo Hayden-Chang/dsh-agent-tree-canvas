@@ -80,12 +80,8 @@ export async function mountCanvas(
     const mountSummaryEditor = (id: SessionId, element: HTMLElement) => scope.effect(() => controller.mountEditor(id, element))
     const bindNavigation = (element: HTMLElement, actions: CanvasNavigation) =>
       scope.effect(() => bindCanvasNavigation(element, zoomOptions, actions))
-    scope.effect(() => scope.inputTriggers.registerSource(quoteTrigger((sessionId, text, source) => {
-      const target = controller.quoteSource(sessionId, text, source)
-      if (target === undefined) return false
-      face.openQuote(target, text)
-      return true
-    })))
+    scope.effect(() => scope.inputTriggers.registerSource(quoteTrigger((sessionId, text, source) =>
+      controller.openReference(sessionId, text, source))))
     scope.on('connection/reset', () => { controller.reload() })
     scope.effect(() => scope.resources.register({
       protocol: 'canvaschat',

@@ -7,6 +7,24 @@ import type { SessionProjectionSummaryExcluded } from '@deepseek-ai/dsh-session-
 export type CanvasId = Branded<'CanvasId'>
 /** Independent presentation choice for a Session node. */
 export type CanvasMode = 'chat' | 'summary'
+/** A literal selection's address in a rendered message or human summary. */
+export interface DraftQuoteSource {
+  readonly sessionId: SessionId
+  readonly seq: number
+  readonly turn: number
+  readonly offset: number
+}
+export interface SummaryQuoteSource {
+  readonly kind: 'summary'
+  readonly sessionId: SessionId
+  readonly offset: number
+}
+export type QuoteSource = DraftQuoteSource | SummaryQuoteSource
+/** The selection that created a child, retained independently of its input draft. */
+export interface QuoteOrigin {
+  readonly text: string
+  readonly source: QuoteSource
+}
 /** A Session's placement and immutable fork origin. */
 export interface CanvasNode {
   readonly sessionId: SessionId
@@ -17,6 +35,7 @@ export interface CanvasNode {
   readonly y: number
   readonly collapsed: boolean
   readonly mode: CanvasMode
+  readonly origin?: QuoteOrigin
 }
 /** One durable tree, including its presentation preferences. */
 export interface CanvasDocument {

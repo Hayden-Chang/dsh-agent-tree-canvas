@@ -53,7 +53,7 @@ it('quotes exact selected text only after the child is retained and retries a bl
   const source = { sessionId: id, seq: 6, turn: 1, offset: 3 }
   f.controller.face.quoteChild(canvasId, id, 8, 'Child', text, source)
   await vi.waitFor(() => { expect(f.snapshot().canvases).toEqual([canvas]) })
-  expect(f.remote.fork).toHaveBeenCalledWith(canvasId, id, 8, 'Child')
+  expect(f.remote.fork).toHaveBeenCalledWith(canvasId, id, 8, 'Child', { text, source })
   expect(f.insertQuote).not.toHaveBeenCalled()
   const binding = { sessionId: childId, ctx: f.ctx } as never
   f.ctx.provide('sessions', { binding: () => binding } as never)
