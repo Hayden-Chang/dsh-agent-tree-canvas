@@ -1,0 +1,30 @@
+- article "New conversation":
+  - button "Chat" [pressed]
+  - button "Summary"
+  - button "Collapse": −
+  - button "Focus and enlarge node": +
+  - button "Delete node"
+  - text: Root conversation
+  - combobox "Branch point":
+    - option "Branch from latest turn" [selected]
+    - option "Turn 1"
+  - button "Branch"
+  - text: Explain snapshot branching. {{clock}}
+  - button "Copy"
+  - status: Completed
+  - button "Completed in {{duration}}"
+  - paragraph: A branch keeps its original context. Later conversations develop independently.
+  - button "Copy"
+  - button "Good response"
+  - button "Bad response"
+  - button "Branch into a new conversation"
+  - text: {{clock}}
+  - textbox "Message or run a task, / commands, @ files or sessions":
+    - paragraph:
+      - button "Go to quoted source": A branch keeps its original context. Later conversations develop independently.
+      - button "Remove quote": ×
+  - button "Add files or run commands"
+  - 'button "Access mode, current: Workspace Write"': Workspace Write
+  - button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
+  - button "Send message"
+  - button "1 turns 1 steps"

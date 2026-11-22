@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.1.4/permanent-subtree-deletion/guide.md
+/:
+  en: da98a7c0c6ac2bfd
+  zh: 102b5489acd589a0
+/permanent-subtree-deletion:
+  en: dd3749efe0ae9b72
+  zh: 30166db334bc7f4a
+/permanent-subtree-deletion/change:
+  en: c9b6344d613b043b
+  zh: 672806de6a0656f7
+/permanent-subtree-deletion/migration:
+  en: 9fed440bb38d11a7
+  zh: 7b92ee4d11ec6a13

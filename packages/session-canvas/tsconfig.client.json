@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo",
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": [
+    "src/summary-options.ts",
+    "src/client",
+    "src/zoom-options.ts",
+    "src/types.ts",
+    "src/css-modules.d.ts",
+    "src/remote.ts",
+    "src/remote-types.ts",
+    "src/subtree.ts"
+  ]
+}

@@ -1,0 +1,88 @@
+- text: Session canvas
+- combobox "Choose canvas":
+  - option "New canvas" [selected]
+- button "New canvas"
+- button "Rename"
+- button "New conversation"
+- button "All chats"
+- button "All summaries"
+- button "Auto layout"
+- button "Refresh"
+- article "New conversation":
+  - button "Chat" [pressed]
+  - button "Summary"
+  - button "Collapse": −
+  - button "Focus and enlarge node": +
+  - button "Delete node"
+  - text: Root conversation
+  - combobox "Branch point":
+    - option "Branch from latest turn" [selected]
+    - option "Turn 1"
+    - option "Turn 2"
+  - button "Branch"
+  - text: Explain snapshot branching. {{clock}}
+  - button "Copy"
+  - status: Completed
+  - button "Completed in {{duration}}"
+  - paragraph: A branch keeps its original context. Later conversations develop independently.
+  - button "Copy"
+  - button "Good response"
+  - button "Bad response"
+  - button "Branch into a new conversation"
+  - text: {{clock}} Add a second detail. {{clock}}
+  - button "Copy"
+  - status: Completed
+  - button "Completed in {{duration}}" [disabled]
+  - paragraph: "LATER ONLY: this belongs to the second turn."
+  - button "Copy"
+  - button "Good response"
+  - button "Bad response"
+  - button "Branch into a new conversation"
+  - text: {{clock}}
+  - navigation "Turn navigation":
+    - button "Jump to turn 1": "1"
+    - button "Jump to turn 2": "2"
+  - textbox "Message or run a task, / commands, @ files or sessions"
+  - button "Add files or run commands"
+  - 'button "Access mode, current: Workspace Write"': Workspace Write
+  - button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
+  - button "Send message" [disabled]
+  - button "2 turns 2 steps"
+- article "New conversation · Branch":
+  - button "Chat" [pressed]
+  - button "Summary"
+  - button "Collapse": −
+  - button "Focus and enlarge node": +
+  - button "Delete node"
+  - text: Snapshot from parent · event 15
+  - combobox "Branch point":
+    - option "Branch from latest turn" [selected]
+  - button "Branch"
+  - textbox "Message or run a task, / commands, @ files or sessions"
+  - button "Add files or run commands"
+  - 'button "Access mode, current: Workspace Write"': Workspace Write
+  - button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
+  - button "Send message" [disabled]
+  - button "1 turns 1 steps"
+- article "New conversation · Branch":
+  - button "Chat" [pressed]
+  - button "Summary"
+  - button "Collapse": −
+  - button "Focus and enlarge node": +
+  - button "Delete node"
+  - text: Snapshot from parent · event 23
+  - combobox "Branch point":
+    - option "Branch from latest turn" [selected]
+  - button "Branch"
+  - textbox "Message or run a task, / commands, @ files or sessions"
+  - button "Add files or run commands"
+  - 'button "Access mode, current: Workspace Write"': Workspace Write
+  - button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
+  - button "Send message" [disabled]
+  - button "2 turns 2 steps"
+- navigation "Canvas navigation":
+  - button "Zoom out": −
+  - button "Zoom level": 97%
+  - button "Zoom in": +
+  - button "Actual size"
+  - button "Fit map"

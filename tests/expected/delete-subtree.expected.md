@@ -1,0 +1,6 @@
+- dialog "Permanently delete 2 nodes?":
+  - heading "Permanently delete 2 nodes?" [level=2]
+  - button "Close"
+  - paragraph: This permanently deletes this node and every descendant, including conversation history, context, summaries, versions, and drafts. This cannot be undone.
+  - button "Cancel"
+  - button "Delete permanently"

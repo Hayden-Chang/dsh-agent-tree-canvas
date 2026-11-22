@@ -1,0 +1,10 @@
+version: 1
+scenario: session-canvas
+profile: web
+composition: web-session-canvas
+recording: authored
+header:
+  class: web-session-canvas
+  pin: true
+replay:
+  override: true

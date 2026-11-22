@@ -1,0 +1,50 @@
+- text: Session canvas
+- combobox "Choose canvas":
+  - option "New canvas" [selected]
+- button "New canvas"
+- button "Rename"
+- button "New conversation"
+- button "All chats"
+- button "All summaries"
+- button "Auto layout"
+- button "Refresh"
+- article "New conversation":
+  - button "Chat"
+  - button "Summary" [pressed]
+  - button "Collapse": −
+  - button "Focus and enlarge node": +
+  - button "Delete node"
+  - text: Root conversation
+  - combobox "Branch point":
+    - option "Branch from latest turn" [selected]
+    - option "Turn 1"
+  - button "Branch"
+  - button "Update summary"
+  - button "Edit Markdown"
+  - button "Export Markdown"
+  - button "Version history"
+  - heading "Manual notes" [level=1]
+  - paragraph: PRIVATE NOTES
+  - group: Excerpts and sources
+- article "New conversation · Branch":
+  - button "Chat" [pressed]
+  - button "Summary"
+  - button "Collapse": −
+  - button "Focus and enlarge node": +
+  - button "Delete node"
+  - text: Snapshot from parent · event 15
+  - combobox "Branch point":
+    - option "Branch from latest turn" [selected]
+  - button "Branch"
+  - textbox "Message or run a task, / commands, @ files or sessions"
+  - button "Add files or run commands"
+  - 'button "Access mode, current: Workspace Write"': Workspace Write
+  - button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
+  - button "Send message" [disabled]
+  - button "1 turns 1 steps"
+- navigation "Canvas navigation":
+  - button "Zoom out": −
+  - button "Zoom level": 100%
+  - button "Zoom in": +
+  - button "Actual size"
+  - button "Fit map"

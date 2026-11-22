@@ -1,0 +1,51 @@
+- text: Session canvas
+- combobox "Choose canvas":
+  - option "New canvas" [selected]
+- button "New canvas"
+- button "Rename"
+- button "New conversation"
+- button "All chats"
+- button "All summaries"
+- button "Auto layout"
+- button "Refresh"
+- article "New conversation":
+  - button "Delete node"
+  - heading "阅读与思考" [level=1]
+  - paragraph: 把一本书，读成自己的知识。
+  - paragraph: 从一段对话出发，让问题沿着不同方向生长。
+- article "New conversation · Branch":
+  - button "Delete node"
+  - heading "捕捉灵感" [level=2]
+  - paragraph: 留住阅读中打动你的句子，随时补充自己的理解。
+- article "New conversation · Branch":
+  - button "Delete node"
+  - heading "深入追问" [level=2]
+  - paragraph:
+    - strong: 为什么？还有什么可能？
+  - paragraph: 沿着一个问题，继续探索。
+- article "Branch 3":
+  - button "Delete node"
+  - heading "连接知识" [level=2]
+  - list:
+    - listitem: 关联相似概念
+    - listitem: 比较不同观点
+    - listitem: 回到原文验证
+- article "Branch 4":
+  - button "Delete node"
+  - heading "整理笔记" [level=2]
+  - paragraph: 把零散的想法，整理成清晰的 Markdown。
+- article "Branch 5":
+  - button "Delete node"
+  - heading "形成观点" [level=2]
+  - blockquote:
+    - paragraph: 用自己的语言解释，才是理解的开始。
+- article "Branch 6":
+  - button "Delete node"
+  - heading "付诸行动" [level=2]
+  - paragraph: 选一个值得尝试的想法，带到生活中去。
+- navigation "Canvas navigation":
+  - button "Zoom out": −
+  - button "Zoom level": 89%
+  - button "Zoom in": +
+  - button "Actual size"
+  - button "Fit map"

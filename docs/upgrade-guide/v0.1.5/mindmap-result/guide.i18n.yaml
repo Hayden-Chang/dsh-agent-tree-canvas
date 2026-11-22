@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.1.5/mindmap-result/guide.md
+/:
+  en: d8f2819a6b107c52
+  zh: 0d0da573c8ed03d4
+/mind-map-generation-results:
+  en: 9a0b6913467df1c6
+  zh: b05fb4e40574be51
+/mind-map-generation-results/change:
+  en: e97a1a62b350ba84
+  zh: 9a1dc551081bbf26
+/mind-map-generation-results/migration:
+  en: 1e1590c702afdb37
+  zh: c1021aff8447c336

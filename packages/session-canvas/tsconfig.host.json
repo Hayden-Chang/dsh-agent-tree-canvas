@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
+  },
+  "files": [
+    "src/summary-options.ts",
+    "src/zoom-options.ts",
+    "src/index.ts",
+    "src/types.ts",
+    "src/schema.ts",
+    "src/projection.ts",
+    "src/summary.ts",
+    "src/remote.ts",
+    "src/remote-types.ts",
+    "src/reflection.ts",
+    "src/service-model.json",
+    "src/subtree.ts",
+    "src/mindmap.ts",
+    "src/session-lifecycle.ts",
+    "src/inference.ts"
+  ]
+}

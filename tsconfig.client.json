@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/session-canvas/tsconfig.client.json"
+    }
+  ]
+}
