@@ -14,7 +14,7 @@ import css from './view.module.css'
 import type {} from '@deepseek-ai/dsh-session-canvas/remote'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { CanvasDocument, CanvasId, CanvasMode, CanvasNode, CanvasTranscript, NodePlacement, QuoteOrigin, SummaryDocument, UpdateNodeRequest } from '../types.ts'
-import { quoteRange } from './quote-highlight.ts'
+import { quoteRange, visibleSourceRow } from './quote-highlight.ts'
 import { branchAppearance } from './appearance.ts'
 import type { NodeAppearance } from './appearance.ts'
 import { paintQuoteOrigins } from './quote-links.ts'
@@ -295,8 +295,8 @@ export class CanvasController {
     }
     const target = this.source.getSnapshot().sourceTarget
     if (target === null) return
-    const row = this.sourceRoots.get(target.sessionId)?.element.querySelector<HTMLElement>('kind' in target ? '[data-summary-document]' : target.quote === undefined
-      ? `[data-chat-turn="${target.turn}"]` : `[data-chat-seq="${target.quote.seq}"]`)
+    const row = visibleSourceRow(this.sourceRoots.get(target.sessionId)?.element, 'kind' in target ? '[data-summary-document]' : target.quote === undefined
+      ? `[data-chat-turn="${target.turn}"]` : `[data-chat-seq="${target.quote.seq}"]`, target.quote)
     if (row === undefined || row === null || row.closest('[hidden]') !== null) return
     let destination = row.getBoundingClientRect()
     this.sourceMarker?.removeAttribute('data-canvas-quote-source')
@@ -311,7 +311,7 @@ export class CanvasController {
       const range = quoteRange(message, target.quote.text, target.quote.offset)
       if (range !== undefined) {
         destination = range.getBoundingClientRect()
-        if (typeof Highlight !== 'undefined') CSS.highlights.set('session-canvas-quote', new Highlight(range))
+        if (typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined') CSS.highlights.set('session-canvas-quote', new Highlight(range))
       }
       if (!target.follow) { row.tabIndex = -1; row.focus({ preventScroll: true }) }
     }

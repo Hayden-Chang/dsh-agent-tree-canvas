@@ -46,6 +46,39 @@ it('paints exact repeated selections with each child tone and clears removed or 
   expect(registry.size).toBe(0)
 })
 
+it('paints the visible chat response when a hidden process row has the same sequence', () => {
+  const registry = highlights(), root = sourceRoot()
+  root.innerHTML = '<div hidden><div data-chat-seq="6"></div></div><div data-chat-seq="6"><p data-text-interaction-source>same quote</p></div>'
+  paintQuoteOrigins([{ text: 'same quote', source: { sessionId: parent, seq: 6, turn: 1, offset: 0 }, tone: 'red' }], new Map([[parent, root]]))
+  expect(registry.get('session-canvas-quote-red')?.size).toBe(1)
+  expect([...registry.get('session-canvas-quote-red')!][0]!.toString()).toBe('same quote')
+  root.innerHTML = '<div data-chat-seq="6" data-chat-group-part="reasoning"><p data-text-interaction-source>same quote</p></div><div data-chat-seq="6" data-chat-group-part="response"><p data-text-interaction-source>same quote</p></div>'
+  paintQuoteOrigins([{ text: 'same quote', source: { sessionId: parent, seq: 6, turn: 1, offset: 0 }, tone: 'red' }], new Map([[parent, root]]))
+  expect([...registry.get('session-canvas-quote-red')!][0]!.startContainer.parentElement?.closest('[data-chat-group-part]')?.getAttribute('data-chat-group-part')).toBe('response')
+})
+
+it('paints and removes source overlays when the browser has no Custom Highlight API', () => {
+  vi.stubGlobal('CSS', {}); vi.stubGlobal('Highlight', undefined)
+  const root = sourceRoot(), source = root.querySelector<HTMLElement>('[data-summary-document]')!
+  Object.defineProperty(source, 'offsetWidth', { value: 200 })
+  vi.spyOn(source, 'getBoundingClientRect').mockReturnValue({ left: 20, top: 30, width: 100, height: 80 } as DOMRect)
+  if (!Range.prototype.getClientRects) Range.prototype.getClientRects = () => [] as unknown as DOMRectList
+  vi.spyOn(Range.prototype, 'getClientRects').mockReturnValue([{ left: 30, top: 40, width: 40, height: 10 }] as unknown as DOMRectList)
+  const quote = { ...origin, tone: 'red' as const }, roots = new Map([[parent, root]])
+  const text = source.textContent
+  paintQuoteOrigins([quote], roots)
+  const overlay = source.querySelector<HTMLElement>('[data-canvas-quote-overlay]')!
+  expect(overlay).not.toBeNull()
+  expect(overlay.getAttribute('aria-hidden')).toBe('true')
+  expect(overlay.querySelector<HTMLElement>('[data-quote-tone="red"]')?.style.left).toBe('20px')
+  expect(overlay.querySelector<HTMLElement>('[data-quote-tone="red"]')?.style.width).toBe('80px')
+  expect(source.textContent).toBe(text)
+  paintQuoteOrigins([quote], roots)
+  expect(source.querySelector('[data-canvas-quote-overlay]')).toBe(overlay)
+  paintQuoteOrigins([], roots)
+  expect(source.querySelector('[data-canvas-quote-overlay]')).toBeNull()
+})
+
 function fixture(savedOrigin: QuoteOrigin = origin) {
   highlights()
   const ctx = new Context(), inputState = createSnapshotStore({ draft: '', occurrences: [], draftRev: 0 })
@@ -109,4 +142,18 @@ it('loads the exact chat source before following a child and preserves explicit 
   expect(document.activeElement).toBe(f.root.querySelector('[data-chat-seq]'))
   expect(f.root.querySelector('[data-chat-seq]')?.getAttribute('style')).toContain('--dsw-alias-diagram-red')
   expect(f.controller.openReference(child, 'missing', { ...origin.source, sessionId: 'absent' as SessionId })).toBe(false)
+})
+
+it('follows the visible chat response instead of the hidden duplicate emitted by the stock renderer', async () => {
+  if (!Range.prototype.getBoundingClientRect) Range.prototype.getBoundingClientRect = () => ({} as DOMRect)
+  const f = fixture({ text: 'same quote', source: { sessionId: parent, seq: 6, turn: 1, offset: 0 } })
+  f.root.innerHTML = '<div data-chat-scroll><div hidden><div data-chat-seq="6"></div></div><div data-chat-seq="6"><p data-text-interaction-source>same quote</p></div></div>'
+  const scroll = f.root.firstElementChild as HTMLElement
+  Object.defineProperty(scroll, 'offsetHeight', { value: 200 })
+  vi.spyOn(scroll, 'getBoundingClientRect').mockReturnValue({ top: 0, height: 200 } as DOMRect)
+  f.controller.face.followParent(child)
+  await vi.waitFor(() => { expect(scroll.scrollTop).toBe(910) })
+  expect(f.root.querySelector('[data-canvas-quote-source]')?.closest('[hidden]')).toBeNull()
+  expect(document.activeElement).toBe(f.composer)
+  expect(f.controller.source.getSnapshot().viewportTarget).toBeNull()
 })
