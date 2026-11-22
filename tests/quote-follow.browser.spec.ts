@@ -173,6 +173,84 @@ async function seedChat(home: string, title?: string) {
   }))
 }
 
+it('keeps connectors attached while dragging at reduced zoom, after saving, and when cancelling', async () => {
+  const { page, errors } = await launchCanvasBrowser(seedChat)
+  const canvas = page.locator('[data-session-canvas]')
+  const parent = canvas.locator('[data-canvas-session="session-quoted-chat"]')
+  const source = parent.locator('[data-chat-flow-kind="assistant-step"]:not([hidden]) [data-text-interaction-source]:visible code').nth(1)
+  await source.scrollIntoViewIfNeeded()
+  await source.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1 })
+  await source.evaluate(element => {
+    const range = document.createRange(); range.selectNodeContents(element)
+    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+  })
+  await source.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 0 })
+  await page.getByRole('button', { name: 'Quote in child conversation', exact: true }).click()
+  const child = canvas.locator('[data-canvas-session]').nth(1)
+  await child.locator('[data-composer-input]').waitFor()
+  const childId = (await child.getAttribute('data-canvas-session'))!
+  const position = (card: Locator) => card.evaluate(element => ({ x: (element as HTMLElement).offsetLeft, y: (element as HTMLElement).offsetTop }))
+  const assertAttached = async () => {
+    await expect.poll(() => page.evaluate(id => {
+      const child = document.querySelector<HTMLElement>(`[data-canvas-session="${id}"]`)!
+      const parent = document.querySelector<HTMLElement>('[data-canvas-session="session-quoted-chat"]')!
+      const path = document.querySelector<SVGPathElement>(`[data-canvas-edge="${id}"]`)!
+      const matrix = path.getScreenCTM()!
+      const first = path.getPointAtLength(0).matrixTransform(matrix)
+      const last = path.getPointAtLength(path.getTotalLength()).matrixTransform(matrix)
+      const a = parent.getBoundingClientRect(), b = child.getBoundingClientRect()
+      const right = child.offsetLeft >= parent.offsetLeft
+      return Math.max(Math.abs(first.x - (right ? a.right : a.left)), Math.abs(first.y - (a.top + a.bottom) / 2),
+        Math.abs(last.x - (right ? b.left : b.right)), Math.abs(last.y - (b.top + b.bottom) / 2))
+    }, childId)).toBeLessThan(2)
+  }
+  const halfSize = async () => {
+    await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
+    await canvas.getByRole('button', { name: 'Zoom level', exact: true }).click()
+    await page.getByRole('menuitem', { name: '50%', exact: true }).click()
+  }
+  const startDrag = async (card: Locator, dx: number, dy: number) => {
+    const bounds = (await card.locator('header').boundingBox())!
+    const x = bounds.x + 80, y = bounds.y + bounds.height / 2
+    await page.mouse.move(x, y); await page.mouse.down()
+    await page.mouse.move(x + dx, y + dy, { steps: 6 })
+  }
+  await halfSize(); await assertAttached()
+  const before = await position(child)
+  await startDrag(child, 110, 70)
+  await expect.poll(() => position(child)).toEqual({ x: before.x + 220, y: before.y + 140 })
+  // This assertion runs before pointerup: a saved-position-only edge cannot pass.
+  await assertAttached()
+  await page.screenshot({ path: resolve('.artifacts/edge-drag-live.png'), fullPage: true })
+  await page.mouse.up()
+  await expect.poll(() => canvas.getByRole('button', { name: 'New conversation', exact: true }).isEnabled()).toBe(true)
+  const saved = await position(child)
+  expect(saved).toEqual({ x: before.x + 220, y: before.y + 140 })
+  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await child.locator('[data-composer-input]').waitFor()
+  expect(await position(child)).toEqual(saved)
+  await halfSize(); await assertAttached()
+  // The other endpoint follows a parent drag, including the zero-coordinate clamp.
+  const originalParent = await position(parent)
+  await startDrag(parent, -80, 45)
+  await expect.poll(() => position(parent)).toEqual({ x: Math.max(0, originalParent.x - 160), y: originalParent.y + 90 })
+  await assertAttached()
+  await parent.locator('header').dispatchEvent('pointercancel', { pointerId: 1, pointerType: 'mouse' })
+  await page.mouse.up()
+  expect(await position(parent)).toEqual(originalParent)
+  await assertAttached()
+  // Crossing the parent switches the connected sides while the pointer is held.
+  await startDrag(child, (0 - saved.x) / 2, -20)
+  await expect.poll(() => position(child)).toEqual({ x: 0, y: Math.max(0, saved.y - 40) })
+  await assertAttached()
+  await child.locator('header').dispatchEvent('pointercancel', { pointerId: 1, pointerType: 'mouse' })
+  await page.mouse.up()
+  expect(await position(child)).toEqual(saved)
+  await assertAttached()
+  expect(errors).toEqual([])
+})
+
 it('shows the DSH conversation name and persists manual edits through the header control', async () => {
   const { page, errors } = await launchCanvasBrowser(home => seedChat(home, 'Generated conversation name'))
   const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()

@@ -43,6 +43,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         readonly scale: number
         readonly focused?: boolean
         readonly onFocus?: () => void
+        /** Share transient placement with the card and all incident connectors. Null ends the preview. */
+        readonly onMove: (id: SessionId, position: { readonly x: number; readonly y: number } | null) => void
         /** Report unscaled card dimensions after mount, resize, and view changes. */
         readonly onMeasure?: (id: SessionId,
           size: { readonly width: number; readonly height: number; readonly summaryOnly: boolean }) => void

@@ -61,6 +61,13 @@ export function CanvasPage(props: PageProps) {
   const canvas = canvases.find(value => value.id === activeId)
   const summaryOnly = activeId !== null && summaryCanvases.includes(activeId)
   const appearance = useMemo(() => branchAppearance(canvas?.nodes ?? []), [canvas?.nodes])
+  const [movement, setMovement] = useState<{ canvasId: CanvasId; sessionId: SessionId; x: number; y: number } | null>(null)
+  const onMove = useCallback<CardProps['onMove']>((sessionId, position) => {
+    if (activeId === null) return
+    setMovement(current => position === null
+      ? current?.canvasId === activeId && current.sessionId === sessionId ? null : current
+      : { canvasId: activeId, sessionId, ...position })
+  }, [activeId])
   const [measurements, setMeasurements] = useState<{
     canvasId: CanvasId | null
     sizes: ReadonlyMap<SessionId, NodeSize & { readonly summaryOnly: boolean }>
@@ -82,6 +89,10 @@ export function CanvasPage(props: PageProps) {
     const positions = new Map(treeLayout(measuredNodes).map(point => [point.sessionId, point]))
     return canvas.nodes.map(node => ({ ...node, ...positions.get(node.sessionId) }))
   }, [canvas?.nodes, summaryOnly, layoutReady, measuredNodes])
+  // One position feeds both the card and its connectors throughout the gesture and save.
+  const displayedNodes = useMemo(() => compactNodes.map(node =>
+    !summaryOnly && movement?.canvasId === activeId && movement.sessionId === node.sessionId
+      ? { ...node, x: movement.x, y: movement.y } : node), [compactNodes, movement, activeId, summaryOnly])
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 })
   const [focus, setFocus] = useState<{ sessionId: SessionId; previous: CanvasViewport } | null>(null)
   const [editingName, setEditingName] = useState(false)
@@ -133,7 +144,7 @@ export function CanvasPage(props: PageProps) {
     }))
   }, [activeId, viewportTarget])
   const select = (id: CanvasId): void => {
-    props.selectCanvas(id); setViewport({ x: 0, y: 0, scale: 1 }); setFocus(null); setEditingName(false)
+    props.selectCanvas(id); setMovement(null); setViewport({ x: 0, y: 0, scale: 1 }); setFocus(null); setEditingName(false)
   }
   const focusNode = (sessionId: SessionId): void => {
     if (focus?.sessionId === sessionId) { setViewport(focus.previous); setFocus(null); return }
@@ -153,8 +164,8 @@ export function CanvasPage(props: PageProps) {
     setViewport(value => zoomAt(value, scale, center))
   }
   const extent = canvas === undefined ? { x: 2000, y: 2000 } : {
-    x: Math.max(2000, ...compactNodes.map(node => node.x + 600)),
-    y: Math.max(2000, ...compactNodes.map(node => node.y + 660)),
+    x: Math.max(2000, ...displayedNodes.map(node => node.x + 600)),
+    y: Math.max(2000, ...displayedNodes.map(node => node.y + 660)),
   }
   return <section className={css.page} data-session-canvas="">
     <header className={css.toolbar}>
@@ -195,8 +206,8 @@ export function CanvasPage(props: PageProps) {
       </div>}
       <div className={css.world} data-canvas-world="" style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})` }}>
         <svg className={css.edges} width={extent.x} height={extent.y} aria-hidden="true">
-          {compactNodes.map((node) => {
-            const parent = compactNodes.find(value => value.sessionId === node.parentId)
+          {displayedNodes.map((node) => {
+            const parent = displayedNodes.find(value => value.sessionId === node.parentId)
             if (parent === undefined) return null
             const right = node.x >= parent.x
             const parentSize = measurements.sizes.get(parent.sessionId), size = measurements.sizes.get(node.sessionId)
@@ -208,10 +219,10 @@ export function CanvasPage(props: PageProps) {
               d={`M ${x} ${y} C ${(x + dx) / 2} ${y}, ${(x + dx) / 2} ${dy}, ${dx} ${dy}`} />
           })}
         </svg>
-        {canvas !== undefined && compactNodes.map(node => <div key={node.sessionId} className={css.tone}
+        {canvas !== undefined && displayedNodes.map(node => <div key={node.sessionId} className={css.tone}
           data-tone={appearance.get(node.sessionId)?.tone} data-node-level={appearance.get(node.sessionId)?.level}>
           {renderSlot('session-canvas.node', {
-            canvasId: canvas.id, node, scale: viewport.scale, focused: focus?.sessionId === node.sessionId, onMeasure,
+            canvasId: canvas.id, node, scale: viewport.scale, focused: focus?.sessionId === node.sessionId, onMeasure, onMove,
             onFocus: () => { focusNode(node.sessionId) },
           })}</div>)}
       </div>
@@ -238,11 +249,10 @@ export function CanvasPage(props: PageProps) {
 
 /** A draggable Session occurrence retains its conversation independently of main-chat selection. */
 export function CanvasCard(props: CardProps) {
-  const { canvasId, node, scale, focused, onFocus, onMeasure, useResource, useCanvas,
+  const { canvasId, node, scale, focused, onFocus, onMeasure, onMove, useResource, useCanvas,
     SessionProvider, renderSlot, updateNode, arrange, t } = props
   const resource = useResource<'canvaschat'>(`dsh-resource://canvaschat/${encodeURIComponent(node.sessionId)}`)
   const title = props.useSessions(state => state.projectionsBySession[node.sessionId]?.values.sessionCanvas?.title) ?? node.title
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
   const summaryOnly = useCanvas(state => state.summaryOnly.includes(canvasId))
   const [deleting, setDeleting] = useState(false)
   const removal = useCanvas(state => ({ busy: state.busy,
@@ -258,19 +268,26 @@ export function CanvasCard(props: CardProps) {
     return () => { observer.disconnect() }
   }, [node.sessionId, onMeasure, summaryOnly])
   const dragged = useRef(false)
-  const gesture = useRef<{ x: number; y: number; px: number; py: number } | null>(null)
-  const point = position ?? node
-  const stopDrag = (event: PointerEvent<HTMLElement>): void => {
-    if (gesture.current === null) return
+  const committing = useRef(false)
+  const gesture = useRef<{ x: number; y: number; px: number; py: number; pointerId: number; scale: number } | null>(null)
+  const cancelDrag = (event: PointerEvent<HTMLElement>): void => {
+    if (gesture.current?.pointerId !== event.pointerId) return
+    gesture.current = null
+    onMove(node.sessionId, null)
+  }
+  const stopDrag = async (event: PointerEvent<HTMLElement>): Promise<void> => {
+    if (gesture.current?.pointerId !== event.pointerId) return
     const start = gesture.current
     gesture.current = null
-    const x = Math.max(0, start.x + (event.clientX - start.px) / scale)
-    const y = Math.max(0, start.y + (event.clientY - start.py) / scale)
-    if (x !== node.x || y !== node.y) arrange(canvasId, [{ sessionId: node.sessionId, x, y }])
-    setPosition(null)
+    const x = Math.max(0, start.x + (event.clientX - start.px) / start.scale)
+    const y = Math.max(0, start.y + (event.clientY - start.py) / start.scale)
+    if (x === start.x && y === start.y) { onMove(node.sessionId, null); return }
+    onMove(node.sessionId, { x, y }); committing.current = true
+    try { await arrange(canvasId, [{ sessionId: node.sessionId, x, y }]) }
+    finally { committing.current = false; onMove(node.sessionId, null) }
   }
   return <article ref={cardRef} className={css.card} aria-label={title} data-canvas-session={node.sessionId}
-    data-summary-only={summaryOnly || undefined} data-focused={focused || undefined} style={{ left: point.x, top: point.y }}
+    data-summary-only={summaryOnly || undefined} data-focused={focused || undefined} style={{ left: node.x, top: node.y }}
     onPointerDown={() => { dragged.current = false }}
     onClick={(event) => {
       if (dragged.current || !window.getSelection()?.isCollapsed) return
@@ -279,19 +296,21 @@ export function CanvasCard(props: CardProps) {
     }}>
     <header className={css.cardHeader} hidden={summaryOnly}
       onPointerDown={(event) => {
-        if (event.button !== 0 || (event.target instanceof Element && event.target.closest('button,input'))) return
+        if (event.button !== 0 || gesture.current !== null || committing.current || removal.busy
+          || (event.target instanceof Element && event.target.closest('button,input'))) return
         event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
-        gesture.current = { x: node.x, y: node.y, px: event.clientX, py: event.clientY }
+        gesture.current = { x: node.x, y: node.y, px: event.clientX, py: event.clientY, pointerId: event.pointerId, scale }
       }}
       onPointerMove={(event) => {
         const start = gesture.current
-        if (start !== null && Math.hypot(event.clientX - start.px, event.clientY - start.py) > 3) dragged.current = true
-        if (start !== null) setPosition({
-          x: Math.max(0, start.x + (event.clientX - start.px) / scale),
-          y: Math.max(0, start.y + (event.clientY - start.py) / scale),
+        if (start?.pointerId !== event.pointerId) return
+        if (Math.hypot(event.clientX - start.px, event.clientY - start.py) > 3) dragged.current = true
+        onMove(node.sessionId, {
+          x: Math.max(0, start.x + (event.clientX - start.px) / start.scale),
+          y: Math.max(0, start.y + (event.clientY - start.py) / start.scale),
         })
       }}
-      onPointerUp={stopDrag} onPointerCancel={() => { gesture.current = null; setPosition(null) }}>
+      onPointerUp={event => { void stopDrag(event) }} onPointerCancel={cancelDrag} onLostPointerCapture={cancelDrag}>
       <NodeName title={title} label={t('renameNode')} disabled={resource.value === undefined || removal.busy}
         rename={value => props.renameNode(node.sessionId, value)} />
       <Button size="sm" aria-pressed={node.mode === 'chat'} onClick={() => { updateNode({ canvasId, sessionId: node.sessionId, mode: 'chat' }) }}>{t('chat')}</Button>

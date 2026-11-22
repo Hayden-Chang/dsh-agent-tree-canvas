@@ -27,6 +27,7 @@ function fixture(journal?: DraftJournal) {
   const ctx = new Context()
   let saved = initial
   const remote = {
+    arrange: vi.fn(),
     mindmap: vi.fn(),
     list: vi.fn(async () => ({ ok: true as const, value: [] as CanvasDocument[] })),
     removeNode: vi.fn<(...args: [CanvasId, SessionId]) => Promise<{ ok: true; value: CanvasDocument }>>(),
@@ -55,6 +56,31 @@ function fixture(journal?: DraftJournal) {
   return { ctx, controller, remote, insertQuote, snapshot: () => controller.source.getSnapshot(),
     changeSaved: (value: SummaryDocument) => { saved = value } }
 }
+
+it('settles a placement only after its response is applied and reports a rejected save', async () => {
+  const f = fixture(), canvasId = 'moving-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Moving', revision: 1, nodes: [
+    { sessionId: id, parentId: null, forkSeq: null, title: 'Root', x: 80, y: 80, mode: 'chat', collapsed: false },
+  ] }
+  f.controller.source.set({ ...f.snapshot(), canvases: [canvas], activeId: canvasId })
+  const pending = Promise.withResolvers<{ ok: true; value: CanvasDocument }>()
+  f.remote.arrange.mockReturnValueOnce(pending.promise)
+  let settled = false
+  const save = f.controller.face.arrange(canvasId, [{ sessionId: id, x: 240, y: 180 }]).then(() => { settled = true })
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  expect(f.snapshot().busy).toBe(true)
+  const updated = { ...canvas, revision: 2, nodes: [{ ...canvas.nodes[0]!, x: 240, y: 180 }] }
+  pending.resolve({ ok: true, value: updated })
+  await save
+  expect(f.snapshot().canvases).toEqual([updated])
+  expect(f.snapshot().busy).toBe(false)
+  f.remote.arrange.mockRejectedValueOnce(new Error('Offline'))
+  await f.controller.face.arrange(canvasId, [{ sessionId: id, x: 400, y: 300 }])
+  expect(f.snapshot().canvases).toEqual([updated])
+  expect(f.snapshot().busy).toBe(false)
+  expect(f.snapshot().notice?.kind).toBe('failed')
+})
 
 it('quotes exact selected text only after the child is retained and retries a blocked draft without another fork', async () => {
   const f = fixture(), childId = 'quoted-child' as SessionId, canvasId = 'quote-canvas' as CanvasId

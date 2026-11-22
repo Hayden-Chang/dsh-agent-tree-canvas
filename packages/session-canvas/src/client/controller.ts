@@ -69,7 +69,7 @@ export interface CanvasFace {
   readonly openQuote: (source: QuoteSource, text: string, navigation?: QuoteNavigation) => void
   readonly followParent: (id: SessionId) => void
   readonly updateNode: (request: UpdateNodeRequest) => void
-  readonly arrange: (id: CanvasId, nodes: readonly NodePlacement[]) => void
+  readonly arrange: (id: CanvasId, nodes: readonly NodePlacement[]) => Promise<void>
   readonly setMode: (id: CanvasId, mode: CanvasMode) => void
   readonly loadSummary: (id: SessionId) => void
   readonly editSummary: (id: SessionId, markdown: string) => void
@@ -200,8 +200,8 @@ export class CanvasController {
     return result.value
   }
 
-  private run(work: () => Promise<void>, write = false): void {
-    if (this.lifetime.signal.aborted) return
+  private run(work: () => Promise<void>, write = false): Promise<void> {
+    if (this.lifetime.signal.aborted) return Promise.resolve()
     if (write) { this.writes++; this.patch({ busy: true }) }
     const task = work().catch((error: unknown) => {
       if (this.lifetime.signal.aborted) return
@@ -213,6 +213,7 @@ export class CanvasController {
       if (write) { this.writes--; this.patch({ busy: this.writes > 0 }) }
     })
     this.tasks.add(task)
+    return task
   }
 
   private receiveCanvas(value: CanvasDocument): void {
@@ -545,7 +546,7 @@ export class CanvasController {
       this.run(async () => { this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.updateNode(request))) }, true)
     },
     arrange: (id, nodes) => {
-      this.run(async () => { this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.arrange(id, nodes))) }, true)
+      return this.run(async () => { this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.arrange(id, nodes))) }, true)
     },
     setMode: (id, mode) => {
       this.run(async () => {
