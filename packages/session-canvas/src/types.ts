@@ -83,6 +83,8 @@ export interface CanvasMessage {
 /** Whole-history facts, independent of browser history pagination. */
 export interface CanvasTranscript {
   readonly inheritedEventCount: number
+  /** Latest title owned by this Session, excluding titles copied from its parent. */
+  readonly title?: string
   readonly messages: readonly CanvasMessage[]
   readonly turns: readonly { readonly turn: number; readonly seq: number }[]
 }

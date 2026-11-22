@@ -7,6 +7,7 @@
   },
   "files": [
     "src/summary-options.ts",
+    "src/titles.ts",
     "src/zoom-options.ts",
     "src/index.ts",
     "src/types.ts",

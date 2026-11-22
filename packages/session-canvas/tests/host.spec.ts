@@ -9,6 +9,7 @@ import type { AgentHandle, CreateAgentOptions, ResumeAgentOptions } from '@deeps
 import type { Session } from '@deepseek-ai/dsh-session'
 import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
 import SessionProjections from '@deepseek-ai/dsh-session-projection'
+import SessionTitle from '@deepseek-ai/dsh-session-title'
 import LlmRuntime, { LlmAdapter, createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -96,10 +97,56 @@ async function fixture(root?: string) {
       return { header: session.header, events: session.snapshotEvents(), projections: ctx.sessionProjections.snapshot(session), [Symbol.dispose]() {} }
     },
   } as never)
+  await ctx.plugin(SessionTitle, { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 })
   const plugin = ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
   await plugin
   return { ctx, api: ctx.sessionCanvas, adapter, path, plugin, created }
 }
+
+it('names a fork from its own first prompt, projects changes, and pins manual names across remounts', async () => {
+  const { api, ctx, adapter, plugin } = await fixture()
+  let canvas = await api.addRoot((await api.create('Names')).id, 'New conversation')
+  const parent = ctx.sessions.get(canvas.nodes[0]!.sessionId)!
+  ctx.sessionTitle.rename(parent, 'Parent manual name')
+  turn(parent, 1, 'Parent topic', 'Parent response')
+  canvas = await api.fork(canvas.id, parent.id, parent.seq - 1, 'Branch placeholder')
+  const child = ctx.sessions.get(canvas.nodes[1]!.sessionId)!
+  expect(ctx.sessionProjections.snapshot(child).values.sessionCanvas?.title).toBeUndefined()
+  child.append('request/header', { header: { config: { provider: 'fixture', model: 'fixture' } }, reason: 'initial' })
+  adapter.reply = '**Child topic**'
+  turn(child, 2, 'Explain this child question', 'Child response')
+  await vi.waitFor(() => { expect(ctx.sessionTitle.get(child)?.title).toBe('Child topic') })
+  const request = adapter.requests.find(request => request.purpose === 'session-title')!
+  expect(JSON.stringify(request.messages)).toContain('Explain this child question')
+  expect(JSON.stringify(request.messages)).not.toContain('Parent topic')
+  expect(ctx.sessionProjections.snapshot(child).values.sessionCanvas?.title).toBe('Child topic')
+  ctx.sessionTitle.rename(child, 'My chosen name')
+  turn(child, 3, 'Continue the topic', 'More detail')
+  expect(adapter.requests.filter(request => request.purpose === 'session-title')).toHaveLength(1)
+  await plugin.dispose()
+  await ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
+  expect(ctx.sessionProjections.snapshot(ctx.sessions.get(child.id)!).values.sessionCanvas?.title).toBe('My chosen name')
+})
+
+it('keeps a manual name when automatic naming completes late', async () => {
+  const { api, ctx, adapter } = await fixture()
+  let canvas = await api.addRoot((await api.create('Names')).id, 'Parent')
+  const parent = ctx.sessions.get(canvas.nodes[0]!.sessionId)!
+  turn(parent, 1, 'Parent topic', 'Parent response')
+  canvas = await api.fork(canvas.id, parent.id, parent.seq - 1, 'Child')
+  const child = ctx.sessions.get(canvas.nodes[1]!.sessionId)!
+  child.append('request/header', { header: { config: { provider: 'fixture', model: 'fixture' } }, reason: 'initial' })
+  const delayed = Promise.withResolvers<void>()
+  adapter.beforeReply = () => delayed.promise
+  adapter.reply = 'Late generated name'
+  turn(child, 2, 'Child topic', 'Child response')
+  await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+  ctx.sessionTitle.rename(child, 'Manual wins')
+  delayed.resolve()
+  await vi.waitFor(() => { expect(adapter.requests[0]!.signal?.aborted).toBe(true) })
+  expect(ctx.sessionProjections.snapshot(child).values.sessionCanvas?.title).toBe('Manual wins')
+  expect(ctx.sessionTitle.get(child)?.source.kind).toBe('user')
+})
 
 it('persists exact excerpts and manual versions across plugin remounts', async () => {
   const { api, ctx, plugin, created } = await fixture()

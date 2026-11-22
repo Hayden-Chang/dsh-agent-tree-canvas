@@ -71,6 +71,7 @@ it.each(['colors', 'navigation'] as const)('preserves child quote %s after clear
   const editor = parent.getByRole('textbox', { name: 'Edit Markdown', exact: true })
   const paragraphs = Array.from({ length: 64 }, (_, index) => index === 12 || index === 50 ? 'Repeated selected passage.' : `Paragraph ${index}: context around the selected source.`)
   await editor.fill(paragraphs.join('\n\n')); await editor.press('Escape')
+  await parent.locator('[data-canvas-summary] [role="status"]').waitFor({ state: 'hidden' })
   const selected = parent.locator('[data-summary-document] p').filter({ hasText: 'Repeated selected passage.' })
   const quoteAt = async (index: number) => {
     const paragraph = selected.nth(index)
@@ -143,7 +144,7 @@ it.each(['colors', 'navigation'] as const)('preserves child quote %s after clear
 })
 
 /** Seed a recorded completed turn; the stock renderer and real UI create the quoted child. */
-async function seedChat(home: string) {
+async function seedChat(home: string, title?: string) {
   const id = 'session-quoted-chat', canvasId = 'quoted-chat'
   const project = `--${home.replaceAll('/', '-').replace(/^-+/u, '')}--`, directory = join(home, 'sessions', project, id)
   const text = Array.from({ length: 48 }, (_, index) => index === 8 || index === 35
@@ -159,6 +160,9 @@ async function seedChat(home: string) {
       record.data.stream = []
     }
   }
+  if (title !== undefined) fixture.push({ type: 'session/title', seq: fixture.length - 1, time: fixture.length,
+    data: { title, messageSeqs: [fixture.find(record => record.type === 'user/message' && record.data.source.kind === 'user')!.seq],
+      source: { kind: 'provider', provider: 'fixture' } } })
   await mkdir(directory, { recursive: true }); await mkdir(join(home, 'storages'), { recursive: true })
   // The stock log reader requires the header in its own Zstandard frame.
   await writeFile(join(directory, 'session.v4.jsonl.zstd'), Buffer.concat(fixture.map(record => zstdCompressSync(JSON.stringify(record) + '\n'))))
@@ -168,6 +172,26 @@ async function seedChat(home: string) {
     ] } }, summaries: { [id]: { sessionId: id, markdown: '', revision: 0, version: 0, versions: [], excerpts: [], draft: null } } },
   }))
 }
+
+it('shows the DSH conversation name and persists manual edits through the header control', async () => {
+  const { page, errors } = await launchCanvasBrowser(home => seedChat(home, 'Generated conversation name'))
+  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
+  const label = 'Edit conversation name'
+  await expect.poll(() => parent.locator('header span[title]').innerText()).toBe('Generated conversation name')
+  await parent.getByRole('button', { name: label, exact: true }).click()
+  const input = parent.getByRole('textbox', { name: label, exact: true })
+  await input.fill('我自己起的名字')
+  await page.screenshot({ path: resolve('.artifacts/session-name-editing.png'), fullPage: true })
+  await input.press('Enter')
+  await expect.poll(() => parent.locator('header span[title]').innerText()).toBe('我自己起的名字')
+  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await expect.poll(() => parent.locator('header span[title]').innerText()).toBe('我自己起的名字')
+  await parent.getByRole('button', { name: label, exact: true }).click()
+  await input.fill('Cancelled edit'); await input.press('Escape')
+  await expect.poll(() => parent.locator('header span[title]').innerText()).toBe('我自己起的名字')
+  await page.screenshot({ path: resolve('.artifacts/session-name-saved.png'), fullPage: true })
+  expect(errors).toEqual([])
+})
 
 it.each(['native', 'fallback'] as const)('colors and follows a real chat quote using %s highlights', async (mode) => {
   const { page, errors } = await launchCanvasBrowser(seedChat, mode === 'fallback')
@@ -216,7 +240,7 @@ it.each(['native', 'fallback'] as const)('colors and follows a real chat quote u
   const assertFollow = async (header = false) => {
     await scroll.evaluate(element => { element.scrollTop = 0 })
     const viewport = await canvas.locator('[data-canvas-world]').getAttribute('style')
-    if (header) await child.locator('header').click({ position: { x: 24, y: 24 } })
+    if (header) await child.locator('header span[title]').click()
     else await child.locator('[data-composer-input]').click()
     await expect.poll(() => source.evaluate(element => {
       const rect = element.getBoundingClientRect(), bounds = element.closest('[data-chat-scroll]')!.getBoundingClientRect()

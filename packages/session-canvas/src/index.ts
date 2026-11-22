@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { ZoomOptions } from './zoom-options.ts'
 import { AutosaveDelayMs } from './summary-options.ts'
+import { CanvasTitles, TitleOptions } from './titles.ts'
 import { CanvasSessions } from './session-lifecycle.ts'
 import { canvasDomain, deletionDomain, emptySummary } from './schema.ts'
 import { quoteOriginSchema } from './quote.ts'
@@ -32,6 +33,8 @@ import type {
 
 /** Validated plugin resource bounds and the default conversation persona. */
 export interface Config extends MindmapLimits {
+  /** Automatic naming of forked conversations, using their own first prompt. */
+  readonly titles: TitleOptions
   /** Idle delay before saving human summary edits, in milliseconds. */
   readonly autosaveDelayMs: number
   /** Browser wheel and pinch zoom gains. */
@@ -62,8 +65,9 @@ function revise(document: SummaryDocument, markdown: string, kind: SummaryVersio
 
 /** Optional plugin; unloading withdraws its UI/API without deleting stored Sessions or notes. */
 export default class SessionCanvas extends TypertRemoteService {
-  static inject = ['sessions', 'storageDomain', 'sessionController', 'sessionQuery', 'sessionProjections', 'agentDefaultModel', 'agentPresets', 'llm', 'agents', 'sessionPersistence', 'workspaceRegistry']
+  static inject = ['sessions', 'storageDomain', 'sessionController', 'sessionQuery', 'sessionProjections', 'sessionTitle', 'agentDefaultModel', 'agentPresets', 'llm', 'agents', 'sessionPersistence', 'workspaceRegistry']
   static Config = z.object({
+    titles: TitleOptions,
     autosaveDelayMs: AutosaveDelayMs,
     zoom: ZoomOptions,
     maxInputBytes: z.natural().min(1).default(384000),
@@ -110,6 +114,9 @@ export default class SessionCanvas extends TypertRemoteService {
       } finally { await this.deletionJobs.close(); await this.domain.close() }
     })
     this.transcript = await this.ctx.sessionProjections.register(transcriptProjection)
+    const titles = new CanvasTitles(this.ctx, this.transcript,
+      id => this.list().some(canvas => canvas.nodes.some(node => node.sessionId === id && node.parentId !== null)), this.config.titles)
+    this.ctx.effect(() => () => titles.dispose())
     this.mindmapContext = await this.ctx.sessionProjections.register(mindmapProjection)
     this.ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
       const decision = await next()
@@ -141,6 +148,10 @@ export default class SessionCanvas extends TypertRemoteService {
       await this.finishDeletion(canvasId, job.sessionIds)
     }
     await this.runtime.restore(this.list().flatMap(canvas => canvas.nodes.map(node => node.sessionId)))
+    for (const canvas of this.list()) for (const node of canvas.nodes) {
+      const session = this.ctx.sessions.get(node.sessionId)
+      if (session !== undefined) titles.resume(session)
+    }
   }
 
   private assertSessionAvailable(id: SessionId): void {

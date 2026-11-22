@@ -10,6 +10,19 @@ import type { DraftJournal, EditorDraft } from '../src/client/draft-journal.ts'
 const id = 'controller-session' as SessionId
 const initial: SummaryDocument = { sessionId: id, version: 0, revision: 0, markdown: 'Saved', versions: [], excerpts: [], draft: null }
 
+it('renames the owning DSH Session and reports rejection without discarding the edit', async () => {
+  const f = fixture(), rename = vi.fn(async (_title: string) => ({ ok: true as const, value: { title: 'Manual title', seq: 12 } }))
+  const using = vi.fn(async (_id: SessionId, _options: object, operation: (reference: object) => Promise<unknown>) =>
+    operation({ ready: Promise.resolve({ session: { rename } }) }))
+  f.ctx.provide('sessions', { using } as never)
+  expect(await f.controller.face.renameNode(id, 'Manual title')).toBe(true)
+  expect(rename).toHaveBeenCalledWith('Manual title')
+  expect(using.mock.calls[0]?.[0]).toBe(id)
+  rename.mockRejectedValueOnce(new Error('unavailable'))
+  expect(await f.controller.face.renameNode(id, 'Keep my edit')).toBe(false)
+  expect(f.snapshot().notice?.kind).toBe('renameFailed')
+})
+
 function fixture(journal?: DraftJournal) {
   const ctx = new Context()
   let saved = initial

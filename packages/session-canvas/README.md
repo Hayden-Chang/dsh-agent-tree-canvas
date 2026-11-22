@@ -25,6 +25,8 @@ Organize conversations on a canvas and branch from a completed turn to explore a
 <a id="use-this-package"></a>
 ## Use this package
 
+Node headers follow the durable DSH conversation name. Forked conversations are named from their own first human message after a turn completes, using the selected model and DSH's title executor; a short first-message name remains available if generation fails. Opening the plugin resumes unfinished branch naming. The header pencil edits the name: Enter or leaving the field saves, Escape cancels, and later automatic results cannot overwrite a manual name. Mind-map topics keep their existing labels until that conversation has its own title.
+
 Enable this optional bundle in a Web profile, then open **Session canvas** in the sidebar. A custom composition can load its [bundle patch](cordis.patch.yml) alongside the standard Web services. The plugin starts new Sessions with its conversation preset, without code execution or filesystem tools.
 
 This is an independent plugin for unmodified DSH **0.2.2-rc.1** (Node >=24.9). Install the built archive with the standard plugin manager; no DSH source checkout or DSH rebuild is required:

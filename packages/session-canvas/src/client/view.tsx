@@ -8,6 +8,7 @@ import type { CanvasId } from '../types.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { DraftQuoteSource } from './quote-reference.ts'
 import type { CanvasFace } from './controller.ts'
+import { NodeName } from './node-name.tsx'
 import { useSummarySelection } from './summary-selection.ts'
 import { subtreeIds } from '../subtree.ts'
 import { treeLayout } from './layout.ts'
@@ -240,6 +241,7 @@ export function CanvasCard(props: CardProps) {
   const { canvasId, node, scale, focused, onFocus, onMeasure, useResource, useCanvas,
     SessionProvider, renderSlot, updateNode, arrange, t } = props
   const resource = useResource<'canvaschat'>(`dsh-resource://canvaschat/${encodeURIComponent(node.sessionId)}`)
+  const title = props.useSessions(state => state.projectionsBySession[node.sessionId]?.values.sessionCanvas?.title) ?? node.title
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
   const summaryOnly = useCanvas(state => state.summaryOnly.includes(canvasId))
   const [deleting, setDeleting] = useState(false)
@@ -267,7 +269,7 @@ export function CanvasCard(props: CardProps) {
     if (x !== node.x || y !== node.y) arrange(canvasId, [{ sessionId: node.sessionId, x, y }])
     setPosition(null)
   }
-  return <article ref={cardRef} className={css.card} aria-label={node.title} data-canvas-session={node.sessionId}
+  return <article ref={cardRef} className={css.card} aria-label={title} data-canvas-session={node.sessionId}
     data-summary-only={summaryOnly || undefined} data-focused={focused || undefined} style={{ left: point.x, top: point.y }}
     onPointerDown={() => { dragged.current = false }}
     onClick={(event) => {
@@ -290,8 +292,8 @@ export function CanvasCard(props: CardProps) {
         })
       }}
       onPointerUp={stopDrag} onPointerCancel={() => { gesture.current = null; setPosition(null) }}>
-      <IconBranchOutlineRegular size={16} />
-      <span className={css.nodeTitle} title={node.title}>{node.title}</span>
+      <NodeName title={title} label={t('renameNode')} disabled={resource.value === undefined || removal.busy}
+        rename={value => props.renameNode(node.sessionId, value)} />
       <Button size="sm" aria-pressed={node.mode === 'chat'} onClick={() => { updateNode({ canvasId, sessionId: node.sessionId, mode: 'chat' }) }}>{t('chat')}</Button>
       <Button size="sm" aria-pressed={node.mode === 'summary'} onClick={() => { updateNode({ canvasId, sessionId: node.sessionId, mode: 'summary' }) }}>{t('summary')}</Button>
       <Button size="sm" aria-label={t(node.collapsed ? 'expand' : 'collapse')} onClick={() => { updateNode({ canvasId, sessionId: node.sessionId, collapsed: !node.collapsed }) }}>{node.collapsed ? '+' : '−'}</Button>
@@ -316,7 +318,7 @@ export function CanvasCard(props: CardProps) {
       </>} />
     <div className={css.cardBody} hidden={node.collapsed && !summaryOnly}>
       {resource.value === undefined ? <div className={css.empty}>{t(resource.status === 'failed' ? 'failed' : 'loading')}</div> :
-        <SessionProvider session={resource.value.reference}>{renderSlot('session-canvas.content', { canvasId, node })}</SessionProvider>}
+        <SessionProvider session={resource.value.reference}>{renderSlot('session-canvas.content', { canvasId, node: { ...node, title } })}</SessionProvider>}
     </div>
   </article>
 }

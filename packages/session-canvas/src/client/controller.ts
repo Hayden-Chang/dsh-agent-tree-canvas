@@ -47,7 +47,7 @@ export interface CanvasState {
     readonly turn: number
     readonly quote?: { readonly seq: number; readonly text: string; readonly offset: number }
   } | { readonly kind: 'summary'; readonly sessionId: SessionId; readonly quote: { readonly text: string; readonly offset: number } }) | null
-  readonly notice: { readonly id: number; readonly kind: 'failed' | 'conflict' | 'saved' | 'added' | 'removed' | 'mapped' | 'mapUnchanged' | 'mapFailed' | 'deleteFailed' | 'deleteNotStarted' | 'deleteUnavailable' | 'modelUnavailable'; readonly sessionId?: SessionId } | null
+  readonly notice: { readonly id: number; readonly kind: 'failed' | 'conflict' | 'saved' | 'added' | 'removed' | 'mapped' | 'mapUnchanged' | 'mapFailed' | 'deleteFailed' | 'deleteNotStarted' | 'deleteUnavailable' | 'modelUnavailable' | 'renameFailed'; readonly sessionId?: SessionId } | null
 }
 /** Injected actions and bare reactive source; components receive a bound useCanvas hook. */
 export interface CanvasFace {
@@ -56,6 +56,7 @@ export interface CanvasFace {
   readonly selectCanvas: (id: CanvasId) => void
   readonly createCanvas: (title: string) => void
   readonly renameCanvas: (id: CanvasId, title: string) => void
+  readonly renameNode: (id: SessionId, title: string) => Promise<boolean>
   readonly addRoot: (id: CanvasId, title: string) => void
   readonly fork: (id: CanvasId, sessionId: SessionId, seq: number | null, title: string) => void
   readonly quoteChild: (id: CanvasId, sessionId: SessionId, seq: number | null, title: string, text: string, source?: QuoteSource) => void
@@ -95,7 +96,7 @@ export class CanvasController {
     summaries: {}, drafts: {}, saveStates: {}, summaryOnly: [], generating: [], mapping: null, fitRequest: null, sourceTarget: null, viewportTarget: null, notice: null,
   })
   private readonly lifetime = new AbortController()
-  private readonly tasks = new Set<Promise<void>>()
+  private readonly tasks = new Set<Promise<unknown>>()
   private readonly generations = new Map<SessionId, AbortController>()
   private mapping: AbortController | null = null
   private readonly deleting = new Set<SessionId>()
@@ -391,6 +392,15 @@ export class CanvasController {
     }, true) },
     renameCanvas: (id, title) => {
       this.run(async () => { this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.rename(id, title))) }, true)
+    },
+    renameNode: (id, title) => {
+      if (this.lifetime.signal.aborted || this.deleting.has(id) || this.deleted.has(id)) return Promise.resolve(false)
+      const task = this.ctx.sessions.using(id, { source: 'sessionCanvas', signal: this.lifetime.signal }, async reference => {
+        const binding = await reference.ready
+        await this.value(binding.session.rename(title))
+      }).then(() => true, () => { this.notice('renameFailed'); return false }).finally(() => { this.tasks.delete(task) })
+      this.tasks.add(task)
+      return task
     },
     addRoot: (id, title) => {
       this.run(async () => { this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.addRoot(id, title))) }, true)
