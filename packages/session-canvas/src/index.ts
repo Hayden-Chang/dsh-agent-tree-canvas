@@ -1,5 +1,6 @@
 /** Host owner of durable Session trees and separate human-facing summaries. */
 import { subtreeIds } from './subtree.ts'
+import { clearLearnedPath, hasUnlearnedDescendants } from './learning.ts'
 import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -223,7 +224,7 @@ export default class SessionCanvas extends TypertRemoteService {
     const canvas = this.canvas(canvasId)
     const y = Math.max(-636, ...canvas.nodes.map(node => node.y)) + 700
     const { sessionId } = await this.runtime.create()
-    return this.attach(canvasId, { sessionId, parentId: null, forkSeq: null, title, x: 64, y, mode: 'chat', collapsed: false })
+    return this.attach(canvasId, { sessionId, parentId: null, forkSeq: null, title, x: 64, y, mode: 'chat', collapsed: false, learned: false })
   }
 
   /**
@@ -272,7 +273,7 @@ export default class SessionCanvas extends TypertRemoteService {
     }
     const siblings = this.canvas(canvasId).nodes.filter(node => node.parentId === sessionId).length
     return await this.attach(canvasId, { sessionId: child.sessionId, parentId: sessionId, forkSeq: boundary ?? null,
-      title, x: parent.x + 640, y: parent.y + siblings * 700, mode: 'chat', collapsed: false, ...origin === undefined ? {} : { origin } })
+      title, x: parent.x + 640, y: parent.y + siblings * 700, mode: 'chat', collapsed: false, learned: false, ...origin === undefined ? {} : { origin } })
   }
 
   /**
@@ -326,7 +327,7 @@ export default class SessionCanvas extends TypertRemoteService {
           ? await this.runtime.create()
           : await this.runtime.fork(origin.sessionId, boundary)
         const node: CanvasNode = { sessionId: child.sessionId, parentId: origin.sessionId, forkSeq: boundary,
-          title: entry.text, mode: 'summary', collapsed: false, x: parent.x + (entry.depth + 1) * 640, y: parent.y + created.length * 700 }
+          title: entry.text, mode: 'summary', collapsed: false, learned: false, x: parent.x + (entry.depth + 1) * 640, y: parent.y + created.length * 700 }
         created.push(node)
         ancestors.length = entry.depth + 1; ancestors.push(node)
         path.length = originalPath.length + entry.depth; path.push(entry.text)
@@ -340,7 +341,7 @@ export default class SessionCanvas extends TypertRemoteService {
       const canvas = await this.domain.table('canvases').update(canvasId, value => {
         signal.throwIfAborted()
         if (!value.nodes.some(node => node.sessionId === sessionId)) throw new Error('parent-removed')
-        return { ...value, revision: value.revision + 1, nodes: [...value.nodes, ...created] }
+        return { ...value, revision: value.revision + 1, nodes: [...clearLearnedPath(value.nodes, sessionId), ...created] }
       })
       return { canvas, createdSessionIds: created.map(node => node.sessionId) }
     } catch (error) {
@@ -358,7 +359,8 @@ export default class SessionCanvas extends TypertRemoteService {
         if (node.parentId !== null && !value.nodes.some(parent => parent.sessionId === node.parentId)) {
           throw new RemoteError('canvas/invalid', 'Parent was removed from the canvas', { reason: 'node-not-found' })
         }
-        return { ...value, nodes: [...value.nodes, node], revision: value.revision + 1 }
+        const nodes = node.parentId === null ? value.nodes : clearLearnedPath(value.nodes, node.parentId)
+        return { ...value, nodes: [...nodes, node], revision: value.revision + 1 }
       })
     } catch (error) {
       throw new RemoteError('canvas/attach-failed', 'Session created; canvas save failed. The Session remains in the Session list.', { sessionId: node.sessionId }, { cause: error })
@@ -414,20 +416,30 @@ export default class SessionCanvas extends TypertRemoteService {
   }
 
   /**
-   * Save node presentation.
+   * Save node presentation and learning progress.
    * @param request - node and changed fields.
    * @returns saved canvas.
    */
   @Remote
   async updateNode(request: UpdateNodeRequest): Promise<CanvasDocument> {
     this.node(request.canvasId, request.sessionId)
-    return this.domain.table('canvases').update(request.canvasId, value => ({ ...value, revision: value.revision + 1,
-      nodes: value.nodes.map(node => node.sessionId !== request.sessionId ? node : { ...node,
+    return this.domain.table('canvases').update(request.canvasId, value => {
+      // Validate inside the serialized write so a concurrent fork/uncheck cannot bypass the rule.
+      if (!value.nodes.some(node => node.sessionId === request.sessionId)) {
+        throw new RemoteError('canvas/invalid', 'Node not found', { reason: 'node-not-found' })
+      }
+      if (request.learned && hasUnlearnedDescendants(value.nodes, request.sessionId)) {
+        throw new RemoteError('canvas/unfinished-children', 'Finish child nodes first', { sessionId: request.sessionId })
+      }
+      const nodes = value.nodes.map(node => node.sessionId !== request.sessionId ? node : { ...node,
         ...request.title === undefined ? {} : { title: request.title },
         ...request.mode === undefined ? {} : { mode: request.mode },
         ...request.collapsed === undefined ? {} : { collapsed: request.collapsed },
-      }),
-    }))
+        ...request.learned === undefined ? {} : { learned: request.learned },
+      })
+      return { ...value, revision: value.revision + 1,
+        nodes: request.learned === false ? clearLearnedPath(nodes, request.sessionId) : nodes }
+    })
   }
 
   /**

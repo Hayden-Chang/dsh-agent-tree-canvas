@@ -103,6 +103,102 @@ async function fixture(root?: string) {
   return { ctx, api: ctx.sessionCanvas, adapter, path, plugin, created }
 }
 
+it('persists learning completion across remounts without changing conversation history or notes', async () => {
+  const { api, ctx, plugin, adapter } = await fixture()
+  const canvas = await api.addRoot((await api.create('Learning')).id, 'Topic'), id = canvas.nodes[0]!.sessionId
+  expect(canvas.nodes[0]!.learned).toBe(false)
+  const events = ctx.sessions.get(id)!.snapshotEvents(), notes = api.summary(id)
+  await api.updateNode({ canvasId: canvas.id, sessionId: id, learned: true })
+  await api.updateNode({ canvasId: canvas.id, sessionId: id, collapsed: true, mode: 'summary', title: 'Named' })
+  await api.arrange(canvas.id, [{ sessionId: id, x: 220, y: 140 }])
+  await api.setMode(canvas.id, 'chat')
+  expect(ctx.sessions.get(id)!.snapshotEvents()).toEqual(events)
+  await plugin.dispose()
+  await ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
+  expect(ctx.sessionCanvas.list()[0]!.nodes[0]).toMatchObject({ learned: true, collapsed: true, mode: 'chat', title: 'Named', x: 220, y: 140 })
+  expect(ctx.sessionProjections.snapshot(ctx.sessions.get(id)!).values.sessionCanvas?.messages).toEqual([])
+  expect(ctx.sessionCanvas.summary(id)).toEqual(notes)
+  expect(adapter.requests).toEqual([])
+})
+
+it('requires every descendant to be learned and clears only the affected ancestors when a leaf is unchecked', async () => {
+  const { api } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  canvas = await api.fork(canvas.id, child, null, 'Grandchild')
+  const leaf = canvas.nodes.at(-1)!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Sibling')
+  const sibling = canvas.nodes.at(-1)!.sessionId
+  canvas = await api.addRoot(canvas.id, 'Independent root')
+  const independent = canvas.nodes.at(-1)!.sessionId
+  const set = (sessionId: SessionId, learned: boolean) => api.updateNode({ canvasId: canvas.id, sessionId, learned })
+  for (const id of [root, child]) await expect(set(id, true)).rejects.toMatchObject({ code: 'canvas/unfinished-children' })
+  expect(api.list()[0]).toEqual(canvas)
+  await set(leaf, true)
+  expect(api.list()[0]!.nodes.find(node => node.sessionId === child)?.learned).toBe(false)
+  await set(child, true)
+  await expect(set(root, true)).rejects.toMatchObject({ code: 'canvas/unfinished-children' })
+  await set(sibling, true); await set(independent, true); await set(root, true)
+  const updated = await set(leaf, false)
+  expect(updated.nodes.map(node => node.learned)).toEqual([false, false, false, true, true])
+})
+
+it('invalidates learned ancestors when a late fork attaches and enables manual completion after its deletion', async () => {
+  const { api, created } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  const release = Promise.withResolvers<void>(), started = Promise.withResolvers<void>()
+  const create = created.getMockImplementation()!
+  created.mockImplementationOnce(async options => { const result = await create(options); started.resolve(); await release.promise; return result })
+  const pending = api.fork(canvas.id, child, null, 'Late grandchild')
+  await started.promise
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  await api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })
+  release.resolve()
+  canvas = await pending
+  expect(canvas.nodes.map(node => node.learned)).toEqual([false, false, false])
+  await expect(api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })).rejects.toMatchObject({ code: 'canvas/unfinished-children' })
+  canvas = await api.removeNode(canvas.id, canvas.nodes.at(-1)!.sessionId)
+  expect(canvas.nodes.map(node => node.learned)).toEqual([false, false])
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  expect((await api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })).nodes.every(node => node.learned)).toBe(true)
+})
+
+it.each(['uncheck-first', 'check-first'] as const)('serializes learning updates against concurrent descendant changes: %s', async order => {
+  const { api } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  const check = () => api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })
+  const uncheck = () => api.updateNode({ canvasId: canvas.id, sessionId: child, learned: false })
+  const results = await Promise.allSettled(order === 'uncheck-first' ? [uncheck(), check()] : [check(), uncheck()])
+  if (order === 'uncheck-first') expect(results[1]).toMatchObject({ status: 'rejected', reason: { code: 'canvas/unfinished-children' } })
+  else expect(results.every(result => result.status === 'fulfilled')).toBe(true)
+  expect(api.list()[0]!.nodes.map(node => node.learned)).toEqual([false, false])
+})
+
+it('clears learned ancestors only when a generated mind map actually attaches unfinished nodes', async () => {
+  const { api, adapter } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  canvas = await api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })
+  adapter.reply = '{"nodes":[]}'
+  expect((await api.mindmap(canvas.id, child, null, 'Already concise', new AbortController().signal)).canvas).toEqual(canvas)
+  adapter.reply = '{"nodes":[{"depth":0,"text":"First topic"},{"depth":1,"text":"Specific detail"}]}'
+  const generated = await api.mindmap(canvas.id, child, null, 'First topic and specific detail', new AbortController().signal)
+  expect(generated.createdSessionIds).toHaveLength(2)
+  expect(generated.canvas.nodes.map(node => node.learned)).toEqual([false, false, false, false])
+})
+
 it('names a fork from its own first prompt, projects changes, and pins manual names across remounts', async () => {
   const { api, ctx, adapter, plugin } = await fixture()
   let canvas = await api.addRoot((await api.create('Names')).id, 'New conversation')

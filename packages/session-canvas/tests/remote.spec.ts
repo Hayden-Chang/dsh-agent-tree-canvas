@@ -1,6 +1,24 @@
 /** The installed Gateway receives the complete, validated Remote surface. */
 import { expect, it } from 'vitest'
 import { TYPERT_REMOTE } from '../src/remote.ts'
+import { canvasSchema } from '../src/schema.ts'
+
+it('defaults legacy nodes to unfinished and validates learning progress on storage and wire boundaries', () => {
+  const legacy = { id: 'canvas', title: 'Legacy', revision: 1, nodes: [
+    { sessionId: 'root', parentId: null, forkSeq: null, title: 'Root', x: 0, y: 0, mode: 'chat', collapsed: false },
+  ] }
+  const update = TYPERT_REMOTE.methods['sessionCanvas/updateNode']!
+  for (const schema of [canvasSchema, update.result.create()]) {
+    expect(schema.parse(legacy)).toMatchObject({ nodes: [{ learned: false }] })
+    expect(schema.parse({ ...legacy, nodes: [{ ...legacy.nodes[0], learned: true }] })).toMatchObject({ nodes: [{ learned: true }] })
+    expect(() => schema.parse({ ...legacy, nodes: [{ ...legacy.nodes[0], learned: 'yes' }] })).toThrow()
+  }
+  for (const learned of [true, false]) {
+    const request = { canvasId: 'canvas', sessionId: 'root', learned }
+    expect(update.input({ strict: true }).create().parse({ request })).toEqual({ request })
+  }
+  expect(() => update.input().create().parse({ request: { canvasId: 'canvas', sessionId: 'root', learned: 1 } })).toThrow()
+})
 
 it('exposes all canvas methods and marks only generation as cancellable', () => {
   expect(Object.keys(TYPERT_REMOTE.methods).sort()).toEqual([

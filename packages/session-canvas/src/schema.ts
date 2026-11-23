@@ -15,7 +15,7 @@ export const canvasSchema: z.ZodType<CanvasDocument> = z.object({
   nodes: z.array(z.object({
     sessionId, parentId: sessionId.nullable(), forkSeq: revision.nullable(),
     title: z.string(), x: z.number(), y: z.number(),
-    collapsed: z.boolean(), mode: z.enum(['chat', 'summary']), origin: quoteOriginSchema.optional(),
+    collapsed: z.boolean(), mode: z.enum(['chat', 'summary']), learned: z.boolean().default(false), origin: quoteOriginSchema.optional(),
   })),
 })
 /** Complete summary record validation, including retained versions and pending generation. */

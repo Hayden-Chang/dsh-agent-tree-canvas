@@ -47,8 +47,8 @@
           "kind": "method",
           "name": "updateNode",
           "signature": "@Remote async updateNode(request: UpdateNodeRequest): Promise<CanvasDocument>",
-          "summary": "Save node presentation.",
-          "jsDoc": "/**\n * Save node presentation.\n * @param request - node and changed fields.\n * @returns saved canvas.\n */"
+          "summary": "Save node presentation and learning progress.",
+          "jsDoc": "/**\n * Save node presentation and learning progress.\n * @param request - node and changed fields.\n * @returns saved canvas.\n */"
         },
         {
           "kind": "method",
@@ -140,7 +140,7 @@
         },
         {
           "name": "CanvasNode",
-          "declaration": "export interface CanvasNode {\n    readonly sessionId: SessionId;\n    readonly parentId: SessionId | null;\n    readonly forkSeq: number | null;\n    readonly title: string;\n    readonly x: number;\n    readonly y: number;\n    readonly collapsed: boolean;\n    readonly mode: CanvasMode;\n}"
+          "declaration": "export interface CanvasNode {\n    readonly sessionId: SessionId;\n    readonly parentId: SessionId | null;\n    readonly forkSeq: number | null;\n    readonly title: string;\n    readonly x: number;\n    readonly y: number;\n    readonly collapsed: boolean;\n    readonly mode: CanvasMode;\n    readonly learned?: boolean;\n}"
         },
         {
           "name": "NodePlacement",
@@ -168,7 +168,7 @@
         },
         {
           "name": "UpdateNodeRequest",
-          "declaration": "export interface UpdateNodeRequest {\n    readonly canvasId: CanvasId;\n    readonly sessionId: SessionId;\n    readonly title?: string;\n    readonly collapsed?: boolean;\n    readonly mode?: CanvasMode;\n}"
+          "declaration": "export interface UpdateNodeRequest {\n    readonly canvasId: CanvasId;\n    readonly sessionId: SessionId;\n    readonly title?: string;\n    readonly collapsed?: boolean;\n    readonly mode?: CanvasMode;\n    readonly learned?: boolean;\n}"
         },
         {
           "name": "MindmapResult",

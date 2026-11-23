@@ -9,7 +9,7 @@ export type { SessionCanvasRemote } from './remote-types.ts'
 const id = z.string()
 const mode = z.enum(['chat', 'summary'])
 const node = z.object({ sessionId: id, parentId: id.nullable(), forkSeq: z.number().nullable(),
-  title: z.string(), x: z.number(), y: z.number(), collapsed: z.boolean(), mode, origin: quoteOriginSchema.optional() })
+  title: z.string(), x: z.number(), y: z.number(), collapsed: z.boolean(), mode, learned: z.boolean().default(false), origin: quoteOriginSchema.optional() })
 const canvas = z.object({ id, title: z.string(), nodes: z.array(node), revision: z.number() })
 const summary = z.object({ version: z.number(), sessionId: id, markdown: z.string(), revision: z.number(),
   versions: z.array(z.object({ revision: z.number(), markdown: z.string(), kind: z.enum(['edit', 'excerpt', 'generated', 'restore']), time: z.number() })),
@@ -52,7 +52,7 @@ export const TYPERT_REMOTE = createTypertRemoteInfo({ package: '@deepseek-ai/dsh
   'sessionCanvas/mindmap': method('Generate mind map', [['canvasId', id], ['sessionId', id], ['atSeq', z.number().int().nonnegative().nullable()], ['text', z.string().min(1)]], mindmapResult, true),
   'sessionCanvas/removeNode': method('Permanently delete subtree and its data', [['canvasId', id], ['sessionId', id]], canvas),
   'sessionCanvas/updateNode': method('Update node', [['request', z.object({ canvasId: id, sessionId: id,
-    title: z.string().optional(), collapsed: z.boolean().optional(), mode: mode.optional() })]], canvas),
+    title: z.string().optional(), collapsed: z.boolean().optional(), mode: mode.optional(), learned: z.boolean().optional() })]], canvas),
   'sessionCanvas/arrange': method('Arrange nodes', [['canvasId', id], ['placements', z.array(z.object({ sessionId: id, x: z.number(), y: z.number() }))]], canvas),
   'sessionCanvas/setMode': method('Set view', [['canvasId', id], ['mode', mode]], canvas),
   'sessionCanvas/summary': method('Read summary', [['sessionId', id]], summary),

@@ -11,6 +11,7 @@ import type { CanvasFace, CanvasState } from './controller.ts'
 import { NodeName } from './node-name.tsx'
 import { useSummarySelection } from './summary-selection.ts'
 import { subtreeIds } from '../subtree.ts'
+import { hasUnlearnedDescendants } from '../learning.ts'
 import { treeLayout } from './layout.ts'
 import type { NodeSize } from './layout.ts'
 import { branchAppearance } from './appearance.ts'
@@ -308,6 +309,9 @@ export function CanvasCard(props: CardProps) {
   const [deleting, setDeleting] = useState(false)
   const removal = useCanvas(state => ({ busy: state.busy,
     count: subtreeIds(state.canvases.find(value => value.id === canvasId)?.nodes ?? [], node.sessionId).size }))
+  const unfinishedChildren = useCanvas(state => hasUnlearnedDescendants(
+    state.canvases.find(value => value.id === canvasId)?.nodes ?? [], node.sessionId))
+  const learningHint = t(node.learned ? 'markUnlearned' : unfinishedChildren ? 'unfinishedChildren' : 'markLearned')
   const cardRef = useRef<HTMLElement | null>(null)
   useLayoutEffect(() => {
     const element = cardRef.current
@@ -342,7 +346,7 @@ export function CanvasCard(props: CardProps) {
     onPointerDown={() => { dragged.current = false }}
     onClick={(event) => {
       if (dragged.current || !window.getSelection()?.isCollapsed) return
-      if (event.target instanceof Element && event.target.closest('button, a, select, [role="button"], [role="menuitem"]')) return
+      if (event.target instanceof Element && event.target.closest('button, a, input, label, select, [role="button"], [role="menuitem"]')) return
       props.followParent(node.sessionId)
     }}>
     <header className={css.cardHeader} hidden={summaryOnly}
@@ -389,6 +393,15 @@ export function CanvasCard(props: CardProps) {
     <div className={css.cardBody} hidden={node.collapsed && !summaryOnly}>
       {resource.value === undefined ? <div className={css.empty}>{t(resource.status === 'failed' ? 'failed' : 'loading')}</div> :
         <SessionProvider session={resource.value.reference}>{renderSlot('session-canvas.content', { canvasId, node: { ...node, title } })}</SessionProvider>}
+    </div>
+    <div className={css.learningStatus}>
+      <Tooltip label={learningHint} side="top" portal>
+        <label className={css.learningControl}>
+          <input type="checkbox" aria-label={t('learned')} aria-description={learningHint}
+            checked={node.learned === true} disabled={removal.busy || (!node.learned && unfinishedChildren)}
+            onChange={event => { updateNode({ canvasId, sessionId: node.sessionId, learned: event.currentTarget.checked }) }} />
+        </label>
+      </Tooltip>
     </div>
   </article>
 }

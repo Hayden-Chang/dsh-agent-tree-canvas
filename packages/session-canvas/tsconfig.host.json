@@ -20,6 +20,7 @@
     "src/reflection.ts",
     "src/service-model.json",
     "src/subtree.ts",
+    "src/learning.ts",
     "src/mindmap.ts",
     "src/session-lifecycle.ts",
     "src/inference.ts"

@@ -50,7 +50,7 @@ export interface CanvasState {
     readonly turn: number
     readonly quote?: { readonly seq: number; readonly text: string; readonly offset: number }
   } | { readonly kind: 'summary'; readonly sessionId: SessionId; readonly quote: { readonly text: string; readonly offset: number } }) | null
-  readonly notice: { readonly id: number; readonly kind: 'failed' | 'conflict' | 'saved' | 'added' | 'removed' | 'mapped' | 'mapUnchanged' | 'mapFailed' | 'deleteFailed' | 'deleteNotStarted' | 'deleteUnavailable' | 'modelUnavailable' | 'renameFailed' | 'explainFailed'; readonly sessionId?: SessionId } | null
+  readonly notice: { readonly id: number; readonly kind: 'failed' | 'conflict' | 'saved' | 'added' | 'removed' | 'mapped' | 'mapUnchanged' | 'mapFailed' | 'deleteFailed' | 'deleteNotStarted' | 'deleteUnavailable' | 'modelUnavailable' | 'renameFailed' | 'explainFailed' | 'unfinishedChildren'; readonly sessionId?: SessionId } | null
 }
 /** Injected actions and bare reactive source; components receive a bound useCanvas hook. */
 export interface CanvasFace {
@@ -592,7 +592,14 @@ export class CanvasController {
       })
     },
     updateNode: (request) => {
-      this.run(async () => { this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.updateNode(request))) }, true)
+      this.run(async () => {
+        const result = await this.ctx.remote.sessionCanvas.updateNode(request)
+        if (result.ok) { this.receiveCanvas(result.value); return }
+        if (result.error.code !== 'canvas/unfinished-children') throw result.error
+        const current = (await this.value(this.ctx.remote.sessionCanvas.list())).find(canvas => canvas.id === request.canvasId)
+        if (current !== undefined) this.receiveCanvas(current)
+        this.notice('unfinishedChildren')
+      }, true)
     },
     arrange: (id, nodes) => {
       return this.run(async () => { this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.arrange(id, nodes))) }, true)

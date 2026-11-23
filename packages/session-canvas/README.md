@@ -25,6 +25,8 @@ Organize conversations on a canvas and branch from a completed turn to explore a
 <a id="use-this-package"></a>
 ## Use this package
 
+The checkbox at each node's bottom right marks it as **Learned** in Chat, Summary, and collapsed views, and survives reloads. A parent can be checked manually only after every descendant is learned; completing children does not check their parent automatically. Adding a child or a generated mind-map branch, or unchecking a descendant, clears completion along its ancestor path. Deleting an unfinished child re-enables an eligible parent's checkbox. Older nodes start unfinished. Learning progress never enters model context.
+
 Node headers follow the durable DSH conversation name. Forked conversations are named from their own first human message after a turn completes, using the selected model and DSH's title executor; a short first-message name remains available if generation fails. Opening the plugin resumes unfinished branch naming. The header pencil edits the name: Enter or leaving the field saves, Escape cancels, and later automatic results cannot overwrite a manual name. Mind-map topics keep their existing labels until that conversation has its own title.
 
 Enable this optional bundle in a Web profile, then open **Session canvas** in the sidebar. A custom composition can load its [bundle patch](cordis.patch.yml) alongside the standard Web services. The plugin starts new Sessions with its conversation preset, without code execution or filesystem tools.

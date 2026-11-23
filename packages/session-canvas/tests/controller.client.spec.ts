@@ -83,6 +83,47 @@ it('settles a placement only after its response is applied and reports a rejecte
   expect(f.snapshot().notice?.kind).toBe('failed')
 })
 
+it('waits for durable learning updates and retains the saved checkbox value after a failed write', async () => {
+  const f = fixture(), canvasId = 'learning-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Learning', revision: 1, nodes: [
+    { sessionId: id, parentId: null, forkSeq: null, title: 'Root', x: 0, y: 0, mode: 'chat', collapsed: false, learned: false },
+  ] }
+  f.controller.source.set({ ...f.snapshot(), canvases: [canvas], activeId: canvasId })
+  const pending = Promise.withResolvers<{ ok: true; value: CanvasDocument }>()
+  f.remote.updateNode.mockReturnValueOnce(pending.promise)
+  const request = { canvasId, sessionId: id, learned: true }
+  f.controller.face.updateNode(request)
+  expect(f.snapshot().busy).toBe(true)
+  expect(f.snapshot().canvases).toEqual([canvas])
+  expect(f.remote.updateNode).toHaveBeenCalledWith(request)
+  const updated = { ...canvas, revision: 2, nodes: [{ ...canvas.nodes[0]!, learned: true }] }
+  pending.resolve({ ok: true, value: updated })
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.snapshot().canvases).toEqual([updated])
+  f.remote.updateNode.mockResolvedValueOnce({ ok: false, error: { code: 'offline' } })
+  f.controller.face.updateNode({ ...request, learned: false })
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.snapshot().canvases).toEqual([updated])
+  expect(f.snapshot().notice?.kind).toBe('failed')
+})
+
+it('refreshes a stale learning tree and explains why parent completion was rejected', async () => {
+  const f = fixture(), canvasId = 'learning-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Learning', revision: 1, nodes: [
+    { sessionId: id, parentId: null, forkSeq: null, title: 'Root', x: 0, y: 0, mode: 'chat', collapsed: false },
+  ] }
+  f.controller.source.set({ ...f.snapshot(), canvases: [canvas], activeId: canvasId })
+  const current: CanvasDocument = { ...canvas, revision: 2, nodes: [...canvas.nodes,
+    { ...canvas.nodes[0]!, sessionId: 'new-child' as SessionId, parentId: id },
+  ] }
+  f.remote.list.mockResolvedValueOnce({ ok: true, value: [current] })
+  f.remote.updateNode.mockResolvedValueOnce({ ok: false, error: { code: 'canvas/unfinished-children' } })
+  f.controller.face.updateNode({ canvasId, sessionId: id, learned: true })
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.snapshot().canvases).toEqual([current])
+  expect(f.snapshot().notice?.kind).toBe('unfinishedChildren')
+})
+
 it('quotes exact selected text only after the child is retained and retries a blocked draft without another fork', async () => {
   const f = fixture(), childId = 'quoted-child' as SessionId, canvasId = 'quote-canvas' as CanvasId
   const canvas: CanvasDocument = { id: canvasId, title: 'Notes', revision: 1, nodes: [

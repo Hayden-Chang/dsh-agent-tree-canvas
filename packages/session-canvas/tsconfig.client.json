@@ -16,6 +16,7 @@
     "src/css-modules.d.ts",
     "src/remote.ts",
     "src/remote-types.ts",
-    "src/subtree.ts"
+    "src/subtree.ts",
+    "src/learning.ts"
   ]
 }

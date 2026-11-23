@@ -35,6 +35,8 @@ export interface CanvasNode {
   readonly y: number
   readonly collapsed: boolean
   readonly mode: CanvasMode
+  /** User-confirmed learning completion; older nodes without this field are unfinished. */
+  readonly learned?: boolean
   readonly origin?: QuoteOrigin
 }
 /** One durable tree, including its presentation preferences. */
@@ -101,6 +103,7 @@ export interface UpdateNodeRequest {
   readonly title?: string
   readonly collapsed?: boolean
   readonly mode?: CanvasMode
+  readonly learned?: boolean
 }
 /** Optimistic summary write; a stale revision preserves the current saved text. */
 export interface SaveSummaryRequest {
@@ -128,6 +131,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'canvas/deleting': Record<never, never>
     /** The canvas command could not be applied; current data remains available. */
     'canvas/invalid': { readonly reason: string }
+    /** A parent cannot be marked learned while any descendant remains unfinished. */
+    'canvas/unfinished-children': { readonly sessionId: SessionId }
     /** A newer edit exists; retain the caller's unsaved draft. */
     'canvas/conflict': { readonly revision: number }
     /** The Session exists independently and can be recovered from the Session list. */
