@@ -9,6 +9,7 @@ import type { AgentHandle, CreateAgentOptions, ResumeAgentOptions } from '@deeps
 import type { Session } from '@deepseek-ai/dsh-session'
 import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
 import SessionProjections from '@deepseek-ai/dsh-session-projection'
+import SessionTitle from '@deepseek-ai/dsh-session-title'
 import LlmRuntime, { LlmAdapter, createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import Storage from '@deepseek-ai/dsh-storage'
@@ -96,10 +97,152 @@ async function fixture(root?: string) {
       return { header: session.header, events: session.snapshotEvents(), projections: ctx.sessionProjections.snapshot(session), [Symbol.dispose]() {} }
     },
   } as never)
+  await ctx.plugin(SessionTitle, { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 })
   const plugin = ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
   await plugin
   return { ctx, api: ctx.sessionCanvas, adapter, path, plugin, created }
 }
+
+it('persists learning completion across remounts without changing conversation history or notes', async () => {
+  const { api, ctx, plugin, adapter } = await fixture()
+  const canvas = await api.addRoot((await api.create('Learning')).id, 'Topic'), id = canvas.nodes[0]!.sessionId
+  expect(canvas.nodes[0]!.learned).toBe(false)
+  const events = ctx.sessions.get(id)!.snapshotEvents(), notes = api.summary(id)
+  await api.updateNode({ canvasId: canvas.id, sessionId: id, learned: true })
+  await api.updateNode({ canvasId: canvas.id, sessionId: id, collapsed: true, mode: 'summary', title: 'Named' })
+  await api.arrange(canvas.id, [{ sessionId: id, x: 220, y: 140 }])
+  await api.setMode(canvas.id, 'chat')
+  expect(ctx.sessions.get(id)!.snapshotEvents()).toEqual(events)
+  await plugin.dispose()
+  await ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
+  expect(ctx.sessionCanvas.list()[0]!.nodes[0]).toMatchObject({ learned: true, collapsed: true, mode: 'chat', title: 'Named', x: 220, y: 140 })
+  expect(ctx.sessionProjections.snapshot(ctx.sessions.get(id)!).values.sessionCanvas?.messages).toEqual([])
+  expect(ctx.sessionCanvas.summary(id)).toEqual(notes)
+  expect(adapter.requests).toEqual([])
+})
+
+it('requires every descendant to be learned and clears only the affected ancestors when a leaf is unchecked', async () => {
+  const { api } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  canvas = await api.fork(canvas.id, child, null, 'Grandchild')
+  const leaf = canvas.nodes.at(-1)!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Sibling')
+  const sibling = canvas.nodes.at(-1)!.sessionId
+  canvas = await api.addRoot(canvas.id, 'Independent root')
+  const independent = canvas.nodes.at(-1)!.sessionId
+  const set = (sessionId: SessionId, learned: boolean) => api.updateNode({ canvasId: canvas.id, sessionId, learned })
+  for (const id of [root, child]) await expect(set(id, true)).rejects.toMatchObject({ code: 'canvas/unfinished-children' })
+  expect(api.list()[0]).toEqual(canvas)
+  await set(leaf, true)
+  expect(api.list()[0]!.nodes.find(node => node.sessionId === child)?.learned).toBe(false)
+  await set(child, true)
+  await expect(set(root, true)).rejects.toMatchObject({ code: 'canvas/unfinished-children' })
+  await set(sibling, true); await set(independent, true); await set(root, true)
+  const updated = await set(leaf, false)
+  expect(updated.nodes.map(node => node.learned)).toEqual([false, false, false, true, true])
+})
+
+it('invalidates learned ancestors when a late fork attaches and enables manual completion after its deletion', async () => {
+  const { api, created } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  const release = Promise.withResolvers<void>(), started = Promise.withResolvers<void>()
+  const create = created.getMockImplementation()!
+  created.mockImplementationOnce(async options => { const result = await create(options); started.resolve(); await release.promise; return result })
+  const pending = api.fork(canvas.id, child, null, 'Late grandchild')
+  await started.promise
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  await api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })
+  release.resolve()
+  canvas = await pending
+  expect(canvas.nodes.map(node => node.learned)).toEqual([false, false, false])
+  await expect(api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })).rejects.toMatchObject({ code: 'canvas/unfinished-children' })
+  canvas = await api.removeNode(canvas.id, canvas.nodes.at(-1)!.sessionId)
+  expect(canvas.nodes.map(node => node.learned)).toEqual([false, false])
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  expect((await api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })).nodes.every(node => node.learned)).toBe(true)
+})
+
+it.each(['uncheck-first', 'check-first'] as const)('serializes learning updates against concurrent descendant changes: %s', async order => {
+  const { api } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  const check = () => api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })
+  const uncheck = () => api.updateNode({ canvasId: canvas.id, sessionId: child, learned: false })
+  const results = await Promise.allSettled(order === 'uncheck-first' ? [uncheck(), check()] : [check(), uncheck()])
+  if (order === 'uncheck-first') expect(results[1]).toMatchObject({ status: 'rejected', reason: { code: 'canvas/unfinished-children' } })
+  else expect(results.every(result => result.status === 'fulfilled')).toBe(true)
+  expect(api.list()[0]!.nodes.map(node => node.learned)).toEqual([false, false])
+})
+
+it('clears learned ancestors only when a generated mind map actually attaches unfinished nodes', async () => {
+  const { api, adapter } = await fixture()
+  let canvas = await api.addRoot((await api.create('Learning')).id, 'Root')
+  const root = canvas.nodes[0]!.sessionId
+  canvas = await api.fork(canvas.id, root, null, 'Child')
+  const child = canvas.nodes.at(-1)!.sessionId
+  await api.updateNode({ canvasId: canvas.id, sessionId: child, learned: true })
+  canvas = await api.updateNode({ canvasId: canvas.id, sessionId: root, learned: true })
+  adapter.reply = '{"nodes":[]}'
+  expect((await api.mindmap(canvas.id, child, null, 'Already concise', new AbortController().signal)).canvas).toEqual(canvas)
+  adapter.reply = '{"nodes":[{"depth":0,"text":"First topic"},{"depth":1,"text":"Specific detail"}]}'
+  const generated = await api.mindmap(canvas.id, child, null, 'First topic and specific detail', new AbortController().signal)
+  expect(generated.createdSessionIds).toHaveLength(2)
+  expect(generated.canvas.nodes.map(node => node.learned)).toEqual([false, false, false, false])
+})
+
+it('names a fork from its own first prompt, projects changes, and pins manual names across remounts', async () => {
+  const { api, ctx, adapter, plugin } = await fixture()
+  let canvas = await api.addRoot((await api.create('Names')).id, 'New conversation')
+  const parent = ctx.sessions.get(canvas.nodes[0]!.sessionId)!
+  ctx.sessionTitle.rename(parent, 'Parent manual name')
+  turn(parent, 1, 'Parent topic', 'Parent response')
+  canvas = await api.fork(canvas.id, parent.id, parent.seq - 1, 'Branch placeholder')
+  const child = ctx.sessions.get(canvas.nodes[1]!.sessionId)!
+  expect(ctx.sessionProjections.snapshot(child).values.sessionCanvas?.title).toBeUndefined()
+  child.append('request/header', { header: { config: { provider: 'fixture', model: 'fixture' } }, reason: 'initial' })
+  adapter.reply = '**Child topic**'
+  turn(child, 2, 'Explain this child question', 'Child response')
+  await vi.waitFor(() => { expect(ctx.sessionTitle.get(child)?.title).toBe('Child topic') })
+  const request = adapter.requests.find(request => request.purpose === 'session-title')!
+  expect(JSON.stringify(request.messages)).toContain('Explain this child question')
+  expect(JSON.stringify(request.messages)).not.toContain('Parent topic')
+  expect(ctx.sessionProjections.snapshot(child).values.sessionCanvas?.title).toBe('Child topic')
+  ctx.sessionTitle.rename(child, 'My chosen name')
+  turn(child, 3, 'Continue the topic', 'More detail')
+  expect(adapter.requests.filter(request => request.purpose === 'session-title')).toHaveLength(1)
+  await plugin.dispose()
+  await ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
+  expect(ctx.sessionProjections.snapshot(ctx.sessions.get(child.id)!).values.sessionCanvas?.title).toBe('My chosen name')
+})
+
+it('keeps a manual name when automatic naming completes late', async () => {
+  const { api, ctx, adapter } = await fixture()
+  let canvas = await api.addRoot((await api.create('Names')).id, 'Parent')
+  const parent = ctx.sessions.get(canvas.nodes[0]!.sessionId)!
+  turn(parent, 1, 'Parent topic', 'Parent response')
+  canvas = await api.fork(canvas.id, parent.id, parent.seq - 1, 'Child')
+  const child = ctx.sessions.get(canvas.nodes[1]!.sessionId)!
+  child.append('request/header', { header: { config: { provider: 'fixture', model: 'fixture' } }, reason: 'initial' })
+  const delayed = Promise.withResolvers<void>()
+  adapter.beforeReply = () => delayed.promise
+  adapter.reply = 'Late generated name'
+  turn(child, 2, 'Child topic', 'Child response')
+  await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+  ctx.sessionTitle.rename(child, 'Manual wins')
+  delayed.resolve()
+  await vi.waitFor(() => { expect(adapter.requests[0]!.signal?.aborted).toBe(true) })
+  expect(ctx.sessionProjections.snapshot(child).values.sessionCanvas?.title).toBe('Manual wins')
+  expect(ctx.sessionTitle.get(child)?.source.kind).toBe('user')
+})
 
 it('persists exact excerpts and manual versions across plugin remounts', async () => {
   const { api, ctx, plugin, created } = await fixture()
@@ -718,4 +861,30 @@ it('retains a deletion job when enabled search reconciliation fails after remova
   search.mockRestore()
   expect((await api.removeNode(canvas.id, id)).nodes).toEqual([])
   expect(() => api.summary(id)).toThrow()
+})
+
+
+it('retains a child quote origin across reloads without adding it to model history', async () => {
+  const { api, ctx, plugin } = await fixture()
+  const canvas = await api.addRoot((await api.create('Quote origins')).id, 'Parent')
+  const parent = canvas.nodes[0]!.sessionId
+  const origin = { text: 'Selected summary', source: { kind: 'summary' as const, sessionId: parent, offset: 19 } }
+  const forked = await Reflect.apply(api.fork.bind(api), null, [canvas.id, parent, null, 'Child', origin])
+  expect(forked.nodes.at(-1)).toMatchObject({ origin })
+  const child = forked.nodes.at(-1)!.sessionId
+  expect(ctx.sessions.get(child)!.snapshotEvents()).toEqual([])
+  await plugin.dispose()
+  await ctx.plugin(SessionCanvas, SessionCanvas.Config({}))
+  expect(ctx.sessionCanvas.list()[0]!.nodes.at(-1)).toMatchObject({ sessionId: child, origin })
+})
+
+it('rejects a quote from a different parent before creating a child', async () => {
+  const { api, created } = await fixture()
+  const canvas = await api.addRoot((await api.create('Origins')).id, 'Parent')
+  const count = created.mock.calls.length
+  await expect(api.fork(canvas.id, canvas.nodes[0]!.sessionId, null, 'Child', {
+    text: 'Wrong parent', source: { kind: 'summary', sessionId: SessionId('elsewhere'), offset: 0 },
+  })).rejects.toMatchObject({ code: 'canvas/invalid' })
+  expect(created).toHaveBeenCalledTimes(count)
+  expect(api.list()[0]!.nodes).toHaveLength(1)
 })

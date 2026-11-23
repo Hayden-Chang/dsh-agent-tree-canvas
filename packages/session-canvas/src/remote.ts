@@ -3,12 +3,13 @@ import { z } from 'zod'
 import { createTypertRemoteInfo } from '@deepseek-ai/dsh-typert-protocol/remote-info'
 import type { TypertRemoteMethodSpec } from '@deepseek-ai/dsh-typert-protocol'
 import type { CanvasDocument, MindmapResult, SummaryDocument } from './types.ts'
+import { quoteOriginSchema } from './quote.ts'
 export type { SessionCanvasRemote } from './remote-types.ts'
 
 const id = z.string()
 const mode = z.enum(['chat', 'summary'])
 const node = z.object({ sessionId: id, parentId: id.nullable(), forkSeq: z.number().nullable(),
-  title: z.string(), x: z.number(), y: z.number(), collapsed: z.boolean(), mode })
+  title: z.string(), x: z.number(), y: z.number(), collapsed: z.boolean(), mode, learned: z.boolean().default(false), origin: quoteOriginSchema.optional() })
 const canvas = z.object({ id, title: z.string(), nodes: z.array(node), revision: z.number() })
 const summary = z.object({ version: z.number(), sessionId: id, markdown: z.string(), revision: z.number(),
   versions: z.array(z.object({ revision: z.number(), markdown: z.string(), kind: z.enum(['edit', 'excerpt', 'generated', 'restore']), time: z.number() })),
@@ -34,6 +35,7 @@ function method(description: string, parameters: readonly (readonly [string, z.Z
   cancellation = false): TypertRemoteMethodSpec {
   return { service: 'sessionCanvas', description, invocation: { kind: 'direct' },
     parameters: parameters.map(([name, schema]) => ({ name, source: 'json' as const,
+      ...schema.isOptional() ? { acceptsUndefined: true as const } : {},
       codec: codec(schema, name), strictCodec: codec(schema instanceof z.ZodObject ? schema.strict() : schema, name) })),
     result: codec(result, description),
     ...cancellation ? { cancellation: { parameter: 'signal' } } : {},
@@ -46,11 +48,11 @@ export const TYPERT_REMOTE = createTypertRemoteInfo({ package: '@deepseek-ai/dsh
   'sessionCanvas/create': method('Create canvas', [['title', z.string()]], canvas),
   'sessionCanvas/rename': method('Rename canvas', [['canvasId', id], ['title', z.string()]], canvas),
   'sessionCanvas/addRoot': method('Add conversation', [['canvasId', id], ['title', z.string()]], canvas),
-  'sessionCanvas/fork': method('Fork conversation', [['canvasId', id], ['sessionId', id], ['atSeq', z.number().nullable()], ['title', z.string()]], canvas),
+  'sessionCanvas/fork': method('Fork conversation', [['canvasId', id], ['sessionId', id], ['atSeq', z.number().nullable()], ['title', z.string()], ['origin', quoteOriginSchema.optional()]], canvas),
   'sessionCanvas/mindmap': method('Generate mind map', [['canvasId', id], ['sessionId', id], ['atSeq', z.number().int().nonnegative().nullable()], ['text', z.string().min(1)]], mindmapResult, true),
   'sessionCanvas/removeNode': method('Permanently delete subtree and its data', [['canvasId', id], ['sessionId', id]], canvas),
   'sessionCanvas/updateNode': method('Update node', [['request', z.object({ canvasId: id, sessionId: id,
-    title: z.string().optional(), collapsed: z.boolean().optional(), mode: mode.optional() })]], canvas),
+    title: z.string().optional(), collapsed: z.boolean().optional(), mode: mode.optional(), learned: z.boolean().optional() })]], canvas),
   'sessionCanvas/arrange': method('Arrange nodes', [['canvasId', id], ['placements', z.array(z.object({ sessionId: id, x: z.number(), y: z.number() }))]], canvas),
   'sessionCanvas/setMode': method('Set view', [['canvasId', id], ['mode', mode]], canvas),
   'sessionCanvas/summary': method('Read summary', [['sessionId', id]], summary),

@@ -43,6 +43,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         readonly scale: number
         readonly focused?: boolean
         readonly onFocus?: () => void
+        /** Share transient placement with the card and all incident connectors. Null ends the preview. */
+        readonly onMove: (id: SessionId, position: { readonly x: number; readonly y: number } | null) => void
         /** Report unscaled card dimensions after mount, resize, and view changes. */
         readonly onMeasure?: (id: SessionId,
           size: { readonly width: number; readonly height: number; readonly summaryOnly: boolean }) => void
@@ -80,12 +82,8 @@ export async function mountCanvas(
     const mountSummaryEditor = (id: SessionId, element: HTMLElement) => scope.effect(() => controller.mountEditor(id, element))
     const bindNavigation = (element: HTMLElement, actions: CanvasNavigation) =>
       scope.effect(() => bindCanvasNavigation(element, zoomOptions, actions))
-    scope.effect(() => scope.inputTriggers.registerSource(quoteTrigger((sessionId, text, source) => {
-      const target = controller.quoteSource(sessionId, text, source)
-      if (target === undefined) return false
-      face.openQuote(target, text)
-      return true
-    })))
+    scope.effect(() => scope.inputTriggers.registerSource(quoteTrigger((sessionId, text, source) =>
+      controller.openReference(sessionId, text, source))))
     scope.on('connection/reset', () => { controller.reload() })
     scope.effect(() => scope.resources.register({
       protocol: 'canvaschat',

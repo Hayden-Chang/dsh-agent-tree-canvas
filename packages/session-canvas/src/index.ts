@@ -1,5 +1,6 @@
 /** Host owner of durable Session trees and separate human-facing summaries. */
 import { subtreeIds } from './subtree.ts'
+import { clearLearnedPath, hasUnlearnedDescendants } from './learning.ts'
 import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -16,8 +17,10 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { ZoomOptions } from './zoom-options.ts'
 import { AutosaveDelayMs } from './summary-options.ts'
+import { CanvasTitles, TitleOptions } from './titles.ts'
 import { CanvasSessions } from './session-lifecycle.ts'
 import { canvasDomain, deletionDomain, emptySummary } from './schema.ts'
+import { quoteOriginSchema } from './quote.ts'
 import { transcriptProjection } from './projection.ts'
 import { appendPluginRecord } from '@deepseek-ai/dsh-session'
 import { generateMindmap, mindmapProjection, mindmapMessage } from './mindmap.ts'
@@ -26,11 +29,13 @@ import type { MindmapState, MindmapLimits } from './mindmap.ts'
 import { generateSummary } from './summary.ts'
 import type {
   CanvasDocument, CanvasId, CanvasMode, CanvasNode, CanvasTranscript, NodePlacement,
-  SaveSummaryRequest, SummaryDocument, SummaryVersion, UpdateNodeRequest,
+  SaveSummaryRequest, SummaryDocument, SummaryVersion, UpdateNodeRequest, QuoteOrigin,
 } from './types.ts'
 
 /** Validated plugin resource bounds and the default conversation persona. */
 export interface Config extends MindmapLimits {
+  /** Automatic naming of forked conversations, using their own first prompt. */
+  readonly titles: TitleOptions
   /** Idle delay before saving human summary edits, in milliseconds. */
   readonly autosaveDelayMs: number
   /** Browser wheel and pinch zoom gains. */
@@ -61,8 +66,9 @@ function revise(document: SummaryDocument, markdown: string, kind: SummaryVersio
 
 /** Optional plugin; unloading withdraws its UI/API without deleting stored Sessions or notes. */
 export default class SessionCanvas extends TypertRemoteService {
-  static inject = ['sessions', 'storageDomain', 'sessionController', 'sessionQuery', 'sessionProjections', 'agentDefaultModel', 'agentPresets', 'llm', 'agents', 'sessionPersistence', 'workspaceRegistry']
+  static inject = ['sessions', 'storageDomain', 'sessionController', 'sessionQuery', 'sessionProjections', 'sessionTitle', 'agentDefaultModel', 'agentPresets', 'llm', 'agents', 'sessionPersistence', 'workspaceRegistry']
   static Config = z.object({
+    titles: TitleOptions,
     autosaveDelayMs: AutosaveDelayMs,
     zoom: ZoomOptions,
     maxInputBytes: z.natural().min(1).default(384000),
@@ -109,6 +115,9 @@ export default class SessionCanvas extends TypertRemoteService {
       } finally { await this.deletionJobs.close(); await this.domain.close() }
     })
     this.transcript = await this.ctx.sessionProjections.register(transcriptProjection)
+    const titles = new CanvasTitles(this.ctx, this.transcript,
+      id => this.list().some(canvas => canvas.nodes.some(node => node.sessionId === id && node.parentId !== null)), this.config.titles)
+    this.ctx.effect(() => () => titles.dispose())
     this.mindmapContext = await this.ctx.sessionProjections.register(mindmapProjection)
     this.ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
       const decision = await next()
@@ -140,6 +149,10 @@ export default class SessionCanvas extends TypertRemoteService {
       await this.finishDeletion(canvasId, job.sessionIds)
     }
     await this.runtime.restore(this.list().flatMap(canvas => canvas.nodes.map(node => node.sessionId)))
+    for (const canvas of this.list()) for (const node of canvas.nodes) {
+      const session = this.ctx.sessions.get(node.sessionId)
+      if (session !== undefined) titles.resume(session)
+    }
   }
 
   private assertSessionAvailable(id: SessionId): void {
@@ -211,7 +224,7 @@ export default class SessionCanvas extends TypertRemoteService {
     const canvas = this.canvas(canvasId)
     const y = Math.max(-636, ...canvas.nodes.map(node => node.y)) + 700
     const { sessionId } = await this.runtime.create()
-    return this.attach(canvasId, { sessionId, parentId: null, forkSeq: null, title, x: 64, y, mode: 'chat', collapsed: false })
+    return this.attach(canvasId, { sessionId, parentId: null, forkSeq: null, title, x: 64, y, mode: 'chat', collapsed: false, learned: false })
   }
 
   /**
@@ -220,18 +233,24 @@ export default class SessionCanvas extends TypertRemoteService {
    * @param sessionId - parent node.
    * @param atSeq - inclusive completed-turn boundary, or null for the latest completed turn; no completed turns starts an empty child.
    * @param title - child label.
+   * @param origin - selected text and its parent address, independent of the child draft.
    * @returns the saved canvas; the child's summary starts empty.
    */
   @Remote
-  async fork(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string): Promise<CanvasDocument> {
+  async fork(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string, origin?: QuoteOrigin): Promise<CanvasDocument> {
     this.assertCanvasAvailable(canvasId)
-    const work = this.forkNode(canvasId, sessionId, atSeq, title)
+    if (origin !== undefined) {
+      origin = quoteOriginSchema.parse(origin)
+      this.validateText(origin.text)
+      if (origin.source.sessionId !== sessionId) throw new RemoteError('canvas/invalid', 'Quote must belong to the parent', { reason: 'quote-parent-mismatch' })
+    }
+    const work = this.forkNode(canvasId, sessionId, atSeq, title, origin)
     const tasks = this.branches.get(canvasId) ?? new Set<Promise<CanvasDocument>>()
     tasks.add(work); this.branches.set(canvasId, tasks)
     try { return await work } finally { tasks.delete(work); if (tasks.size === 0) this.branches.delete(canvasId) }
   }
 
-  private async forkNode(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string): Promise<CanvasDocument> {
+  private async forkNode(canvasId: CanvasId, sessionId: SessionId, atSeq: number | null, title: string, origin?: QuoteOrigin): Promise<CanvasDocument> {
     const parent = this.node(canvasId, sessionId)
     using observation = await this.ctx.sessionQuery.observeSession(sessionId)
     const transcript = observation.projections?.values.sessionCanvas
@@ -254,7 +273,7 @@ export default class SessionCanvas extends TypertRemoteService {
     }
     const siblings = this.canvas(canvasId).nodes.filter(node => node.parentId === sessionId).length
     return await this.attach(canvasId, { sessionId: child.sessionId, parentId: sessionId, forkSeq: boundary ?? null,
-      title, x: parent.x + 640, y: parent.y + siblings * 700, mode: 'chat', collapsed: false })
+      title, x: parent.x + 640, y: parent.y + siblings * 700, mode: 'chat', collapsed: false, learned: false, ...origin === undefined ? {} : { origin } })
   }
 
   /**
@@ -308,7 +327,7 @@ export default class SessionCanvas extends TypertRemoteService {
           ? await this.runtime.create()
           : await this.runtime.fork(origin.sessionId, boundary)
         const node: CanvasNode = { sessionId: child.sessionId, parentId: origin.sessionId, forkSeq: boundary,
-          title: entry.text, mode: 'summary', collapsed: false, x: parent.x + (entry.depth + 1) * 640, y: parent.y + created.length * 700 }
+          title: entry.text, mode: 'summary', collapsed: false, learned: false, x: parent.x + (entry.depth + 1) * 640, y: parent.y + created.length * 700 }
         created.push(node)
         ancestors.length = entry.depth + 1; ancestors.push(node)
         path.length = originalPath.length + entry.depth; path.push(entry.text)
@@ -322,7 +341,7 @@ export default class SessionCanvas extends TypertRemoteService {
       const canvas = await this.domain.table('canvases').update(canvasId, value => {
         signal.throwIfAborted()
         if (!value.nodes.some(node => node.sessionId === sessionId)) throw new Error('parent-removed')
-        return { ...value, revision: value.revision + 1, nodes: [...value.nodes, ...created] }
+        return { ...value, revision: value.revision + 1, nodes: [...clearLearnedPath(value.nodes, sessionId), ...created] }
       })
       return { canvas, createdSessionIds: created.map(node => node.sessionId) }
     } catch (error) {
@@ -340,7 +359,8 @@ export default class SessionCanvas extends TypertRemoteService {
         if (node.parentId !== null && !value.nodes.some(parent => parent.sessionId === node.parentId)) {
           throw new RemoteError('canvas/invalid', 'Parent was removed from the canvas', { reason: 'node-not-found' })
         }
-        return { ...value, nodes: [...value.nodes, node], revision: value.revision + 1 }
+        const nodes = node.parentId === null ? value.nodes : clearLearnedPath(value.nodes, node.parentId)
+        return { ...value, nodes: [...nodes, node], revision: value.revision + 1 }
       })
     } catch (error) {
       throw new RemoteError('canvas/attach-failed', 'Session created; canvas save failed. The Session remains in the Session list.', { sessionId: node.sessionId }, { cause: error })
@@ -396,20 +416,30 @@ export default class SessionCanvas extends TypertRemoteService {
   }
 
   /**
-   * Save node presentation.
+   * Save node presentation and learning progress.
    * @param request - node and changed fields.
    * @returns saved canvas.
    */
   @Remote
   async updateNode(request: UpdateNodeRequest): Promise<CanvasDocument> {
     this.node(request.canvasId, request.sessionId)
-    return this.domain.table('canvases').update(request.canvasId, value => ({ ...value, revision: value.revision + 1,
-      nodes: value.nodes.map(node => node.sessionId !== request.sessionId ? node : { ...node,
+    return this.domain.table('canvases').update(request.canvasId, value => {
+      // Validate inside the serialized write so a concurrent fork/uncheck cannot bypass the rule.
+      if (!value.nodes.some(node => node.sessionId === request.sessionId)) {
+        throw new RemoteError('canvas/invalid', 'Node not found', { reason: 'node-not-found' })
+      }
+      if (request.learned && hasUnlearnedDescendants(value.nodes, request.sessionId)) {
+        throw new RemoteError('canvas/unfinished-children', 'Finish child nodes first', { sessionId: request.sessionId })
+      }
+      const nodes = value.nodes.map(node => node.sessionId !== request.sessionId ? node : { ...node,
         ...request.title === undefined ? {} : { title: request.title },
         ...request.mode === undefined ? {} : { mode: request.mode },
         ...request.collapsed === undefined ? {} : { collapsed: request.collapsed },
-      }),
-    }))
+        ...request.learned === undefined ? {} : { learned: request.learned },
+      })
+      return { ...value, revision: value.revision + 1,
+        nodes: request.learned === false ? clearLearnedPath(nodes, request.sessionId) : nodes }
+    })
   }
 
   /**

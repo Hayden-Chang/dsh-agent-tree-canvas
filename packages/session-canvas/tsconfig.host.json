@@ -7,9 +7,11 @@
   },
   "files": [
     "src/summary-options.ts",
+    "src/titles.ts",
     "src/zoom-options.ts",
     "src/index.ts",
     "src/types.ts",
+    "src/quote.ts",
     "src/schema.ts",
     "src/projection.ts",
     "src/summary.ts",
@@ -18,6 +20,7 @@
     "src/reflection.ts",
     "src/service-model.json",
     "src/subtree.ts",
+    "src/learning.ts",
     "src/mindmap.ts",
     "src/session-lifecycle.ts",
     "src/inference.ts"

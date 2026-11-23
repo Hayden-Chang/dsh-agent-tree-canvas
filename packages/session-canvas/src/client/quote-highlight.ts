@@ -1,5 +1,15 @@
 /** Locate literal quoted text in rendered Markdown without changing its DOM. */
 
+/** Stock chat renders hidden process and visible response rows with the same address. */
+export function visibleSourceRow(root: HTMLElement | undefined, selector: string,
+  quote?: { readonly text: string; readonly offset: number }): HTMLElement | undefined {
+  const rows = [...root?.querySelectorAll<HTMLElement>(selector) ?? []].filter(row => row.closest('[hidden]') === null)
+  if (quote === undefined) return rows[0]
+  // Expanded reasoning can share the address too; prefer the matching response text.
+  const ordered = [...rows.filter(row => row.dataset.chatGroupPart === 'response'), ...rows.filter(row => row.dataset.chatGroupPart !== 'response')]
+  return ordered.find(row => quoteRange(row.querySelector<HTMLElement>('[data-text-interaction-source]') ?? row, quote.text, quote.offset) !== undefined) ?? ordered[0]
+}
+
 /**
  * Find a text range, preferring the selection's original offset within the message.
  * @param root - rendered original message.

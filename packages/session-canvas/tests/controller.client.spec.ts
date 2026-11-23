@@ -10,10 +10,24 @@ import type { DraftJournal, EditorDraft } from '../src/client/draft-journal.ts'
 const id = 'controller-session' as SessionId
 const initial: SummaryDocument = { sessionId: id, version: 0, revision: 0, markdown: 'Saved', versions: [], excerpts: [], draft: null }
 
+it('renames the owning DSH Session and reports rejection without discarding the edit', async () => {
+  const f = fixture(), rename = vi.fn(async (_title: string) => ({ ok: true as const, value: { title: 'Manual title', seq: 12 } }))
+  const using = vi.fn(async (_id: SessionId, _options: object, operation: (reference: object) => Promise<unknown>) =>
+    operation({ ready: Promise.resolve({ session: { rename } }) }))
+  f.ctx.provide('sessions', { using } as never)
+  expect(await f.controller.face.renameNode(id, 'Manual title')).toBe(true)
+  expect(rename).toHaveBeenCalledWith('Manual title')
+  expect(using.mock.calls[0]?.[0]).toBe(id)
+  rename.mockRejectedValueOnce(new Error('unavailable'))
+  expect(await f.controller.face.renameNode(id, 'Keep my edit')).toBe(false)
+  expect(f.snapshot().notice?.kind).toBe('renameFailed')
+})
+
 function fixture(journal?: DraftJournal) {
   const ctx = new Context()
   let saved = initial
   const remote = {
+    arrange: vi.fn(),
     mindmap: vi.fn(),
     list: vi.fn(async () => ({ ok: true as const, value: [] as CanvasDocument[] })),
     removeNode: vi.fn<(...args: [CanvasId, SessionId]) => Promise<{ ok: true; value: CanvasDocument }>>(),
@@ -36,12 +50,79 @@ function fixture(journal?: DraftJournal) {
   }
   ctx.provide('remote', { sessionCanvas: remote } as never)
   const insertQuote = vi.fn(() => true)
-  ctx.provide('conversation', { input: { for: () => ({ insertReference: insertQuote, state: { getSnapshot: () => ({ draft: '', occurrences: [], draftRev: 0 }) } }) } } as never)
+  const conversation = { input: { for: () => ({ insertReference: insertQuote, state: { getSnapshot: () => ({ draft: '', occurrences: [], draftRev: 0 }) } }) } }
+  ctx.provide('conversation', conversation as never)
   const controller = new CanvasController(ctx, () => {}, 400, journal)
   onTestFinished(async () => { await controller.dispose(); await ctx.fiber.dispose() })
-  return { ctx, controller, remote, insertQuote, snapshot: () => controller.source.getSnapshot(),
+  return { ctx, controller, remote, conversation, insertQuote, snapshot: () => controller.source.getSnapshot(),
     changeSaved: (value: SummaryDocument) => { saved = value } }
 }
+
+it('settles a placement only after its response is applied and reports a rejected save', async () => {
+  const f = fixture(), canvasId = 'moving-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Moving', revision: 1, nodes: [
+    { sessionId: id, parentId: null, forkSeq: null, title: 'Root', x: 80, y: 80, mode: 'chat', collapsed: false },
+  ] }
+  f.controller.source.set({ ...f.snapshot(), canvases: [canvas], activeId: canvasId })
+  const pending = Promise.withResolvers<{ ok: true; value: CanvasDocument }>()
+  f.remote.arrange.mockReturnValueOnce(pending.promise)
+  let settled = false
+  const save = f.controller.face.arrange(canvasId, [{ sessionId: id, x: 240, y: 180 }]).then(() => { settled = true })
+  await Promise.resolve()
+  expect(settled).toBe(false)
+  expect(f.snapshot().busy).toBe(true)
+  const updated = { ...canvas, revision: 2, nodes: [{ ...canvas.nodes[0]!, x: 240, y: 180 }] }
+  pending.resolve({ ok: true, value: updated })
+  await save
+  expect(f.snapshot().canvases).toEqual([updated])
+  expect(f.snapshot().busy).toBe(false)
+  f.remote.arrange.mockRejectedValueOnce(new Error('Offline'))
+  await f.controller.face.arrange(canvasId, [{ sessionId: id, x: 400, y: 300 }])
+  expect(f.snapshot().canvases).toEqual([updated])
+  expect(f.snapshot().busy).toBe(false)
+  expect(f.snapshot().notice?.kind).toBe('failed')
+})
+
+it('waits for durable learning updates and retains the saved checkbox value after a failed write', async () => {
+  const f = fixture(), canvasId = 'learning-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Learning', revision: 1, nodes: [
+    { sessionId: id, parentId: null, forkSeq: null, title: 'Root', x: 0, y: 0, mode: 'chat', collapsed: false, learned: false },
+  ] }
+  f.controller.source.set({ ...f.snapshot(), canvases: [canvas], activeId: canvasId })
+  const pending = Promise.withResolvers<{ ok: true; value: CanvasDocument }>()
+  f.remote.updateNode.mockReturnValueOnce(pending.promise)
+  const request = { canvasId, sessionId: id, learned: true }
+  f.controller.face.updateNode(request)
+  expect(f.snapshot().busy).toBe(true)
+  expect(f.snapshot().canvases).toEqual([canvas])
+  expect(f.remote.updateNode).toHaveBeenCalledWith(request)
+  const updated = { ...canvas, revision: 2, nodes: [{ ...canvas.nodes[0]!, learned: true }] }
+  pending.resolve({ ok: true, value: updated })
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.snapshot().canvases).toEqual([updated])
+  f.remote.updateNode.mockResolvedValueOnce({ ok: false, error: { code: 'offline' } })
+  f.controller.face.updateNode({ ...request, learned: false })
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.snapshot().canvases).toEqual([updated])
+  expect(f.snapshot().notice?.kind).toBe('failed')
+})
+
+it('refreshes a stale learning tree and explains why parent completion was rejected', async () => {
+  const f = fixture(), canvasId = 'learning-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Learning', revision: 1, nodes: [
+    { sessionId: id, parentId: null, forkSeq: null, title: 'Root', x: 0, y: 0, mode: 'chat', collapsed: false },
+  ] }
+  f.controller.source.set({ ...f.snapshot(), canvases: [canvas], activeId: canvasId })
+  const current: CanvasDocument = { ...canvas, revision: 2, nodes: [...canvas.nodes,
+    { ...canvas.nodes[0]!, sessionId: 'new-child' as SessionId, parentId: id },
+  ] }
+  f.remote.list.mockResolvedValueOnce({ ok: true, value: [current] })
+  f.remote.updateNode.mockResolvedValueOnce({ ok: false, error: { code: 'canvas/unfinished-children' } })
+  f.controller.face.updateNode({ canvasId, sessionId: id, learned: true })
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.snapshot().canvases).toEqual([current])
+  expect(f.snapshot().notice?.kind).toBe('unfinishedChildren')
+})
 
 it('quotes exact selected text only after the child is retained and retries a blocked draft without another fork', async () => {
   const f = fixture(), childId = 'quoted-child' as SessionId, canvasId = 'quote-canvas' as CanvasId
@@ -53,7 +134,7 @@ it('quotes exact selected text only after the child is retained and retries a bl
   const source = { sessionId: id, seq: 6, turn: 1, offset: 3 }
   f.controller.face.quoteChild(canvasId, id, 8, 'Child', text, source)
   await vi.waitFor(() => { expect(f.snapshot().canvases).toEqual([canvas]) })
-  expect(f.remote.fork).toHaveBeenCalledWith(canvasId, id, 8, 'Child')
+  expect(f.remote.fork).toHaveBeenCalledWith(canvasId, id, 8, 'Child', { text, source })
   expect(f.insertQuote).not.toHaveBeenCalled()
   const binding = { sessionId: childId, ctx: f.ctx } as never
   f.ctx.provide('sessions', { binding: () => binding } as never)
@@ -85,6 +166,83 @@ it('keeps an explicit source when text repeats and refuses to guess for ambiguou
   messages = messages.slice(0, 1)
   expect(f.controller.quoteSource(childId, 'repeated sentence')).toEqual({ ...original, sessionId: childId })
   expect(f.controller.quoteSource(childId, 'missing')).toBeUndefined()
+})
+
+function explanation() {
+  const f = fixture(), child = 'explanation-child' as SessionId, canvasId = 'explanation-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Explanation', revision: 1, nodes: [
+    { sessionId: child, parentId: id, forkSeq: 8, title: 'Child', x: 640, y: 80, mode: 'chat', collapsed: false },
+  ] }
+  const binding = { sessionId: child, ctx: f.ctx } as never
+  let draft = ''
+  const initialize = vi.fn((_binding: unknown, request: { prompt: string }) => { draft = request.prompt; return 'applied' as 'applied' | 'preserved' | 'blocked' })
+  const submit = vi.fn()
+  Object.assign(f.conversation.input, { requestDraftInitialization: initialize,
+    for: () => ({ insertReference: f.insertQuote, submit, state: { getSnapshot: () => ({ draft, occurrences: [], draftRev: 1 }) } }),
+  })
+  f.ctx.provide('locale', { bind: () => () => 'Please explain this passage in context.' } as never)
+  f.ctx.provide('sessions', { binding: () => binding } as never)
+  f.remote.fork.mockResolvedValue({ ok: true, value: canvas })
+  const source = { sessionId: id, seq: 6, turn: 1, offset: 7 }
+  const explain = (text = 'Exact selected passage') => f.controller.face.explainChild(canvasId, id, 8, 'Child', text, source)
+  return { ...f, binding, initialize, submit, explain, canvas, child, source, draft: () => draft }
+}
+
+it('explains a selection once through the retained child input and keeps its source origin', async () => {
+  const f = explanation()
+  f.explain(); f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toEqual([f.canvas]) })
+  expect(f.submit).not.toHaveBeenCalled()
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.remote.fork).toHaveBeenCalledExactlyOnceWith(f.canvas.id, id, 8, 'Child', { text: 'Exact selected passage', source: f.source })
+  expect(f.initialize).toHaveBeenCalledExactlyOnceWith(f.binding, { prompt: 'Please explain this passage in context.\n\n', whenDraftExists: 'keep' })
+  expect(f.insertQuote).toHaveBeenCalledExactlyOnceWith(quoteReference('Exact selected passage', f.source), { start: f.draft().length, end: f.draft().length, draftRev: 1 })
+  expect(f.submit).toHaveBeenCalledExactlyOnceWith('queue', 'click')
+  expect(f.submit.mock.invocationCallOrder[0]).toBeGreaterThan(f.insertQuote.mock.invocationCallOrder[0]!)
+})
+
+it('retries blocked explanation preparation without creating another child or sending twice', async () => {
+  const f = explanation()
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toHaveLength(1) })
+  f.initialize.mockReturnValueOnce('blocked')
+  expect(() => f.controller.prepareChat(f.binding)).toThrow('not ready')
+  expect(f.submit).not.toHaveBeenCalled()
+  f.insertQuote.mockReturnValueOnce(false)
+  expect(() => f.controller.prepareChat(f.binding)).toThrow('could not accept')
+  expect(f.submit).not.toHaveBeenCalled()
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.remote.fork).toHaveBeenCalledTimes(1)
+  expect(f.initialize).toHaveBeenCalledTimes(2)
+  expect(f.submit).toHaveBeenCalledTimes(1)
+})
+
+it('preserves an unexpected existing child draft and does not auto-send it', async () => {
+  const f = explanation()
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toHaveLength(1) })
+  f.initialize.mockReturnValueOnce('preserved')
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.insertQuote).not.toHaveBeenCalled()
+  expect(f.submit).not.toHaveBeenCalled()
+  expect(f.snapshot().notice?.kind).toBe('explainFailed')
+})
+
+it('does not fork blank explanations or send after a fork fails, and never auto-retries a rejected submit', async () => {
+  const f = explanation()
+  f.explain('  '); expect(f.remote.fork).not.toHaveBeenCalled()
+  f.remote.fork.mockRejectedValueOnce(new Error('Offline'))
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.submit).not.toHaveBeenCalled()
+  expect(f.snapshot().notice?.kind).toBe('failed')
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toHaveLength(1) })
+  f.submit.mockImplementationOnce(() => { throw new Error('Cannot submit') })
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.submit).toHaveBeenCalledTimes(1)
+  expect(f.snapshot().canvases).toEqual([f.canvas])
+  expect(f.snapshot().notice?.kind).toBe('explainFailed')
 })
 
 it('ignores an older summary read that completes after a new candidate', async () => {

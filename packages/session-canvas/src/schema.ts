@@ -4,6 +4,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { CanvasDocument, CanvasId, SummaryDocument } from './types.ts'
+import { quoteOriginSchema } from './quote.ts'
 
 const sessionId = z.string().min(1).transform(brandString<SessionId>)
 const canvasId = z.string().min(1).transform(brandString<CanvasId>)
@@ -14,7 +15,7 @@ export const canvasSchema: z.ZodType<CanvasDocument> = z.object({
   nodes: z.array(z.object({
     sessionId, parentId: sessionId.nullable(), forkSeq: revision.nullable(),
     title: z.string(), x: z.number(), y: z.number(),
-    collapsed: z.boolean(), mode: z.enum(['chat', 'summary']),
+    collapsed: z.boolean(), mode: z.enum(['chat', 'summary']), learned: z.boolean().default(false), origin: quoteOriginSchema.optional(),
   })),
 })
 /** Complete summary record validation, including retained versions and pending generation. */

@@ -9,32 +9,13 @@ function formatQuoteText(text: string): string {
   return text.replace(/\r\n?/gu, '\n').split('\n').map(line => `> ${line}`).join('\n')
 }
 
-/** Durable source kept in the reference id; never included in model text. */
-export interface DraftQuoteSource {
-  readonly sessionId: SessionId
-  readonly seq: number
-  readonly turn: number
-  readonly offset: number
-}
-
-/** Human notes have their own address and never resolve against the conversation transcript. */
-export interface SummaryQuoteSource {
-  readonly kind: 'summary'
-  readonly sessionId: SessionId
-  readonly offset: number
-}
-/** Saved source of a quote from either a message or human notes. */
-export type QuoteSource = DraftQuoteSource | SummaryQuoteSource
+import { quoteSourceSchema } from '../quote.ts'
+import type { QuoteSource } from '../types.ts'
+export type { DraftQuoteSource, SummaryQuoteSource, QuoteSource } from '../types.ts'
 
 /** Input-trigger source id, also persisted by the unmodified composer. */
 export const QUOTE_SOURCE = 'session-canvas-quote'
 
-const sourceSchema = z.object({
-  sessionId: z.string().min(1).transform(value => value as SessionId),
-  seq: z.number().int().nonnegative(), turn: z.number().int().nonnegative(), offset: z.number().int().nonnegative(),
-})
-const quoteSourceSchema = z.union([sourceSchema, z.object({ kind: z.literal('summary'),
-  sessionId: z.string().min(1).transform(value => value as SessionId), offset: z.number().int().nonnegative() })])
 const quoteSchema = z.object({ version: z.literal(1), text: z.string().min(1), source: quoteSourceSchema.optional() })
 
 /** @param ref - persisted reference id. @returns validated quote text and source. */

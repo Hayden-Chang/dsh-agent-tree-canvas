@@ -2,18 +2,23 @@
 import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { CanvasTranscript } from './types.ts'
+import type {} from '@deepseek-ai/dsh-session-title'
 
 const schema: z.ZodType<CanvasTranscript> = z.object({
   inheritedEventCount: z.number().int().nonnegative(),
+  title: z.string().optional(),
   messages: z.array(z.object({ seq: z.number().int().nonnegative(), role: z.enum(['user', 'assistant']), text: z.string(), inherited: z.boolean() })),
   turns: z.array(z.object({ turn: z.number().int().nonnegative(), seq: z.number().int().nonnegative() })),
 })
 
 /** Raw conversation text survives compaction; inherited messages remain contextual background. */
 export const transcriptProjection = {
-  key: 'sessionCanvas', stateVersion: 1, stateSchema: schema,
+  key: 'sessionCanvas', stateVersion: 2, stateSchema: schema,
   init: (_header, inheritedEventCount) => ({ inheritedEventCount, messages: [], turns: [] }),
   apply(state, event) {
+    if (event.type === 'session/title' && event.seq >= state.inheritedEventCount) {
+      return { ...state, title: event.data.title }
+    }
     if (event.type === 'turn/end') {
       return { ...state, turns: [...state.turns, { turn: event.data.turn, seq: event.seq }] }
     }
