@@ -9,7 +9,7 @@ import { chromium } from 'playwright'
 import type { Browser, Locator } from 'playwright'
 import { expect, it, onTestFinished } from 'vitest'
 
-async function launchCanvasBrowser(seed?: (home: string) => Promise<void>, fallback = false) {
+async function launchCanvasBrowser(seed?: (home: string) => Promise<void>, fallback = false, explain = false) {
   const runtime = process.env.DSH_RUNTIME_ROOT
   if (!runtime) throw new Error('Set DSH_RUNTIME_ROOT to an installed DSH 0.2.2-rc.1 runtime containing node_modules')
   const home = await mkdtemp(join(tmpdir(), 'canvas-quote-follow-'))
@@ -21,6 +21,14 @@ async function launchCanvasBrowser(seed?: (home: string) => Promise<void>, fallb
     dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-session-canvas'] } },
   }))
   await seed?.(home)
+  if (explain) {
+    const patch = join(profile, 'cordis.patch.yml')
+    await writeFile(patch, JSON.stringify([
+      { id: 'llm-deepseek', disabled: true }, { id: 'llm-deepseek-account', disabled: true },
+      { id: 'agent-default-model', config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } },
+      { insert: [{ id: 'canvas-explanation-fixture', name: resolve('tests/fixtures/explain-provider.mjs') }] },
+    ]))
+  }
   const probe = createServer()
   await new Promise<void>(resolve => { probe.listen(0, '127.0.0.1', resolve) })
   const port = (probe.address() as { port: number }).port
@@ -56,7 +64,7 @@ async function launchCanvasBrowser(seed?: (home: string) => Promise<void>, fallb
   await page.goto(url)
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
   await page.getByText('Session canvas', { exact: true }).first().click()
-  return { page, errors }
+  return { page, errors, home }
 }
 
 it.each(['colors', 'navigation'] as const)('preserves child quote %s after clearing drafts and reloading', async (scenario) => {
@@ -172,6 +180,97 @@ async function seedChat(home: string, title?: string) {
     ] } }, summaries: { [id]: { sessionId: id, markdown: '', revision: 0, version: 0, versions: [], excerpts: [], draft: null } } },
   }))
 }
+
+async function selectPassage(source: Locator) {
+  await source.scrollIntoViewIfNeeded()
+  await source.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1 })
+  await source.evaluate(element => {
+    const range = document.createRange(); range.selectNodeContents(element)
+    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+  })
+  await source.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 0 })
+}
+
+it.each(['chat', 'summary'] as const)('auto-explains selected %s text in one child with inherited context', async (mode) => {
+  const { page, errors, home } = await launchCanvasBrowser(seedChat, false, true)
+  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
+  let source = parent.locator('[data-chat-flow-kind="assistant-step"]:not([hidden]) [data-text-interaction-source]:visible code').nth(1)
+  if (mode === 'summary') {
+    await parent.getByRole('button', { name: 'Summary', exact: true }).click()
+    await parent.getByRole('button', { name: 'Edit Markdown', exact: true }).click()
+    const editor = parent.getByRole('textbox', { name: 'Edit Markdown', exact: true })
+    await editor.fill('application_dev'); await editor.press('Escape')
+    await parent.locator('[data-canvas-summary] [role="status"]').waitFor({ state: 'hidden' })
+    source = parent.locator('[data-summary-document] p')
+  }
+  await selectPassage(source)
+  const action = mode === 'summary' ? page.getByRole('menuitem', { name: 'Explain in child conversation', exact: true })
+    : page.getByRole('button', { name: 'Explain in child conversation', exact: true })
+  await action.click()
+  await expect.poll(() => canvas.locator('[data-canvas-session]').count()).toBe(2)
+  const child = canvas.locator('[data-canvas-session]').nth(1)
+  await expect.poll(() => child.innerText()).toContain('This is the explanation of the selected passage, with its inherited context.')
+  const childId = (await child.getAttribute('data-canvas-session'))!
+  const requests = (await readFile(join(home, 'explain-requests.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    .filter(request => request.sessionId === childId && request.purpose !== 'session-title')
+  expect(requests).toHaveLength(1)
+  const messages = requests[0].messages as { role: string; content: unknown }[]
+  const prompt = JSON.stringify(messages.findLast(message => message.role === 'user')!.content)
+  expect(prompt).toContain('Please explain the quoted text in context.')
+  expect(prompt).toContain('> application_dev')
+  expect(JSON.stringify(messages)).toContain('Explain snapshot branching.')
+  expect(await child.locator('[data-composer-input]').innerText()).not.toContain('Please explain')
+  await expect.poll(() => child.getAttribute('data-focused')).toBe('true')
+  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
+  expect(await canvas.locator('[data-canvas-session]').count()).toBe(2)
+  await expect.poll(() => child.innerText()).toContain('This is the explanation of the selected passage')
+  await expect.poll(() => page.evaluate(() => [...CSS.highlights.get('session-canvas-quote-red') ?? []].map(range => range.toString()))).toEqual(['application_dev'])
+  await page.screenshot({ path: resolve(`.artifacts/explain-child-${mode}.png`), fullPage: true })
+  expect(errors).toEqual([])
+})
+
+it('chooses between overlapping summary links by current child name', async () => {
+  const { page, errors } = await launchCanvasBrowser(seedChat)
+  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
+  await parent.getByRole('button', { name: 'Summary', exact: true }).click()
+  await parent.getByRole('button', { name: 'Edit Markdown', exact: true }).click()
+  const editor = parent.getByRole('textbox', { name: 'Edit Markdown', exact: true })
+  await editor.fill('Shared source passage'); await editor.press('Escape')
+  await parent.locator('[data-canvas-summary] [role="status"]').waitFor({ state: 'hidden' })
+  const source = parent.locator('[data-summary-document] p')
+  for (let index = 0; index < 2; index++) {
+    await selectPassage(source)
+    await page.getByRole('menuitem', { name: 'Quote in child conversation', exact: true }).click()
+    await expect.poll(() => canvas.locator('[data-canvas-session]').count()).toBe(index + 2)
+    await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
+    const child = canvas.locator('[data-canvas-session]').nth(index + 1)
+    await child.getByRole('button', { name: 'Edit conversation name', exact: true }).click()
+    const name = child.getByRole('textbox', { name: 'Edit conversation name', exact: true })
+    await name.fill(index === 0 ? 'First linked conversation' : 'Second linked conversation'); await name.press('Enter')
+    await expect.poll(() => child.locator('header span[title]').innerText()).toBe(index === 0 ? 'First linked conversation' : 'Second linked conversation')
+  }
+  await parent.getByRole('button', { name: 'Focus and enlarge node', exact: true }).click()
+  const geometry = await source.evaluate(element => {
+    const range = document.createRange(); range.selectNodeContents(element)
+    const text = range.getBoundingClientRect(), paragraph = element.getBoundingClientRect()
+    return { text: { left: text.left, right: text.right }, paragraphCenter: paragraph.left + paragraph.width / 2,
+      point: { x: text.left + text.width / 2, y: text.top + text.height / 2 } }
+  })
+  await writeFile(resolve('.artifacts/quote-choice-hit-point.json'), JSON.stringify(geometry, null, 2) + '\n')
+  await page.mouse.move(geometry.point.x, geometry.point.y)
+  await expect.poll(() => source.evaluate(element => getComputedStyle(element).cursor)).toBe('pointer')
+  expect(await source.getAttribute('title')).toContain('First linked conversation')
+  expect(await source.getAttribute('title')).toContain('Second linked conversation')
+  await page.mouse.click(geometry.point.x, geometry.point.y)
+  await page.getByRole('menuitem', { name: 'Second linked conversation', exact: true }).waitFor()
+  await page.screenshot({ path: resolve('.artifacts/quote-child-choices.png'), fullPage: true })
+  await page.getByRole('menuitem', { name: 'Second linked conversation', exact: true }).click()
+  await expect.poll(() => canvas.locator('[data-canvas-session]').nth(2).getAttribute('data-focused')).toBe('true')
+  expect(await canvas.locator('[data-canvas-session]').nth(1).getAttribute('data-focused')).toBeNull()
+  expect(errors).toEqual([])
+})
 
 it('pans twelve retained conversations without changing their layout or wheel navigation', async () => {
   const { page, errors } = await launchCanvasBrowser(seedChat)
@@ -391,5 +490,18 @@ it.each(['native', 'fallback'] as const)('colors and follows a real chat quote u
     await page.emulateMedia({ colorScheme }); await assertColor()
     await page.screenshot({ path: resolve(`.artifacts/chat-quote-${mode}-${colorScheme}.png`), fullPage: true })
   }
+  await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
+  await child.getByRole('button', { name: 'Collapse', exact: true }).click()
+  await parent.getByRole('button', { name: 'Focus and enlarge node', exact: true }).click()
+  await source.scrollIntoViewIfNeeded(); await source.hover()
+  await expect.poll(() => source.evaluate(element => getComputedStyle(element).cursor)).toBe('pointer')
+  const originalScroll = await scroll.evaluate(element => element.scrollTop)
+  await source.click()
+  await expect.poll(() => child.getAttribute('data-focused')).toBe('true')
+  expect(await child.getByRole('button', { name: 'Collapse', exact: true }).isVisible()).toBe(true)
+  const viewport = (await canvas.getByLabel('Conversation canvas', { exact: true }).boundingBox())!, bounds = (await child.boundingBox())!
+  expect(Math.abs(bounds.x + bounds.width / 2 - viewport.x - viewport.width / 2)).toBeLessThan(2)
+  expect(await scroll.evaluate(element => element.scrollTop)).toBe(originalScroll)
+  await page.screenshot({ path: resolve(`.artifacts/quote-open-child-${mode}.png`), fullPage: true })
   expect(errors).toEqual([])
 })

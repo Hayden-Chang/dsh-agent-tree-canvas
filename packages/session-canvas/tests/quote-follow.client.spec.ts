@@ -29,12 +29,13 @@ function sourceRoot() {
 
 it('paints exact repeated selections with each child tone and clears removed or hidden origins', () => {
   const registry = highlights(), root = sourceRoot(), roots = new Map([[parent, root]])
-  const quotes = [{ ...origin, tone: 'red' as const },
+  const quotes = [{ ...origin, tone: 'red' as const, childId: child },
     { text: 'same quote', source: { ...origin.source, offset: 0 }, tone: 'orange' as const }]
-  paintQuoteOrigins(quotes, roots)
+  const links = paintQuoteOrigins(quotes, roots)
   const red = [...registry.get('session-canvas-quote-red')!][0]!
   expect(red.toString()).toBe('same quote')
   expect(red.startContainer.parentElement?.tagName).toBe('B')
+  expect([...links.values()].flat().map(link => ({ id: link.childId, text: link.range.toString() }))).toEqual([{ id: child, text: 'same quote' }])
   expect(registry.get('session-canvas-quote-orange')?.size).toBe(1)
   expect(root.querySelector('mark')).toBeNull()
   paintQuoteOrigins(quotes.slice(1), roots)
@@ -142,6 +143,28 @@ it('loads the exact chat source before following a child and preserves explicit 
   expect(document.activeElement).toBe(f.root.querySelector('[data-chat-seq]'))
   expect(f.root.querySelector('[data-chat-seq]')?.getAttribute('style')).toContain('--dsw-alias-diagram-red')
   expect(f.controller.openReference(child, 'missing', { ...origin.source, sessionId: 'absent' as SessionId })).toBe(false)
+})
+
+it('opens the exact child, expands it when collapsed, and invalidates pending parent navigation', async () => {
+  if (!Range.prototype.getBoundingClientRect) Range.prototype.getBoundingClientRect = () => ({} as DOMRect)
+  const f = fixture()
+  const state = f.controller.source.getSnapshot()
+  f.controller.source.set({ ...state, canvases: state.canvases.map(canvas => ({ ...canvas,
+    nodes: canvas.nodes.map(node => node.sessionId === child ? { ...node, collapsed: true } : node) })) })
+  f.controller.face.openChild(child)
+  await vi.waitFor(() => { expect(f.controller.source.getSnapshot().viewportTarget).toMatchObject({ sessionId: child, focus: true }) })
+  expect(f.updateNode).toHaveBeenCalledExactlyOnceWith({ canvasId, sessionId: child, collapsed: false })
+  const updated = f.controller.source.getSnapshot().canvases[0]!
+  const pending = Promise.withResolvers<{ ok: boolean; value: CanvasDocument }>()
+  f.updateNode.mockReturnValueOnce(pending.promise as never)
+  f.controller.face.followParent(child)
+  f.controller.face.openChild(sibling)
+  await vi.waitFor(() => { expect(f.controller.source.getSnapshot().viewportTarget?.sessionId).toBe(sibling) })
+  pending.resolve({ ok: true, value: updated })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(f.controller.source.getSnapshot().sourceTarget).toBeNull()
+  expect(f.controller.source.getSnapshot().viewportTarget?.sessionId).toBe(sibling)
+  expect(f.scroll.scrollTop).toBe(0)
 })
 
 it('follows the visible chat response instead of the hidden duplicate emitted by the stock renderer', async () => {

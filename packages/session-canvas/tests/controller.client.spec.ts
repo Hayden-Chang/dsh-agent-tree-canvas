@@ -50,10 +50,11 @@ function fixture(journal?: DraftJournal) {
   }
   ctx.provide('remote', { sessionCanvas: remote } as never)
   const insertQuote = vi.fn(() => true)
-  ctx.provide('conversation', { input: { for: () => ({ insertReference: insertQuote, state: { getSnapshot: () => ({ draft: '', occurrences: [], draftRev: 0 }) } }) } } as never)
+  const conversation = { input: { for: () => ({ insertReference: insertQuote, state: { getSnapshot: () => ({ draft: '', occurrences: [], draftRev: 0 }) } }) } }
+  ctx.provide('conversation', conversation as never)
   const controller = new CanvasController(ctx, () => {}, 400, journal)
   onTestFinished(async () => { await controller.dispose(); await ctx.fiber.dispose() })
-  return { ctx, controller, remote, insertQuote, snapshot: () => controller.source.getSnapshot(),
+  return { ctx, controller, remote, conversation, insertQuote, snapshot: () => controller.source.getSnapshot(),
     changeSaved: (value: SummaryDocument) => { saved = value } }
 }
 
@@ -124,6 +125,83 @@ it('keeps an explicit source when text repeats and refuses to guess for ambiguou
   messages = messages.slice(0, 1)
   expect(f.controller.quoteSource(childId, 'repeated sentence')).toEqual({ ...original, sessionId: childId })
   expect(f.controller.quoteSource(childId, 'missing')).toBeUndefined()
+})
+
+function explanation() {
+  const f = fixture(), child = 'explanation-child' as SessionId, canvasId = 'explanation-canvas' as CanvasId
+  const canvas: CanvasDocument = { id: canvasId, title: 'Explanation', revision: 1, nodes: [
+    { sessionId: child, parentId: id, forkSeq: 8, title: 'Child', x: 640, y: 80, mode: 'chat', collapsed: false },
+  ] }
+  const binding = { sessionId: child, ctx: f.ctx } as never
+  let draft = ''
+  const initialize = vi.fn((_binding: unknown, request: { prompt: string }) => { draft = request.prompt; return 'applied' as 'applied' | 'preserved' | 'blocked' })
+  const submit = vi.fn()
+  Object.assign(f.conversation.input, { requestDraftInitialization: initialize,
+    for: () => ({ insertReference: f.insertQuote, submit, state: { getSnapshot: () => ({ draft, occurrences: [], draftRev: 1 }) } }),
+  })
+  f.ctx.provide('locale', { bind: () => () => 'Please explain this passage in context.' } as never)
+  f.ctx.provide('sessions', { binding: () => binding } as never)
+  f.remote.fork.mockResolvedValue({ ok: true, value: canvas })
+  const source = { sessionId: id, seq: 6, turn: 1, offset: 7 }
+  const explain = (text = 'Exact selected passage') => f.controller.face.explainChild(canvasId, id, 8, 'Child', text, source)
+  return { ...f, binding, initialize, submit, explain, canvas, child, source, draft: () => draft }
+}
+
+it('explains a selection once through the retained child input and keeps its source origin', async () => {
+  const f = explanation()
+  f.explain(); f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toEqual([f.canvas]) })
+  expect(f.submit).not.toHaveBeenCalled()
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.remote.fork).toHaveBeenCalledExactlyOnceWith(f.canvas.id, id, 8, 'Child', { text: 'Exact selected passage', source: f.source })
+  expect(f.initialize).toHaveBeenCalledExactlyOnceWith(f.binding, { prompt: 'Please explain this passage in context.\n\n', whenDraftExists: 'keep' })
+  expect(f.insertQuote).toHaveBeenCalledExactlyOnceWith(quoteReference('Exact selected passage', f.source), { start: f.draft().length, end: f.draft().length, draftRev: 1 })
+  expect(f.submit).toHaveBeenCalledExactlyOnceWith('queue', 'click')
+  expect(f.submit.mock.invocationCallOrder[0]).toBeGreaterThan(f.insertQuote.mock.invocationCallOrder[0]!)
+})
+
+it('retries blocked explanation preparation without creating another child or sending twice', async () => {
+  const f = explanation()
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toHaveLength(1) })
+  f.initialize.mockReturnValueOnce('blocked')
+  expect(() => f.controller.prepareChat(f.binding)).toThrow('not ready')
+  expect(f.submit).not.toHaveBeenCalled()
+  f.insertQuote.mockReturnValueOnce(false)
+  expect(() => f.controller.prepareChat(f.binding)).toThrow('could not accept')
+  expect(f.submit).not.toHaveBeenCalled()
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.remote.fork).toHaveBeenCalledTimes(1)
+  expect(f.initialize).toHaveBeenCalledTimes(2)
+  expect(f.submit).toHaveBeenCalledTimes(1)
+})
+
+it('preserves an unexpected existing child draft and does not auto-send it', async () => {
+  const f = explanation()
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toHaveLength(1) })
+  f.initialize.mockReturnValueOnce('preserved')
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.insertQuote).not.toHaveBeenCalled()
+  expect(f.submit).not.toHaveBeenCalled()
+  expect(f.snapshot().notice?.kind).toBe('explainFailed')
+})
+
+it('does not fork blank explanations or send after a fork fails, and never auto-retries a rejected submit', async () => {
+  const f = explanation()
+  f.explain('  '); expect(f.remote.fork).not.toHaveBeenCalled()
+  f.remote.fork.mockRejectedValueOnce(new Error('Offline'))
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().busy).toBe(false) })
+  expect(f.submit).not.toHaveBeenCalled()
+  expect(f.snapshot().notice?.kind).toBe('failed')
+  f.explain()
+  await vi.waitFor(() => { expect(f.snapshot().canvases).toHaveLength(1) })
+  f.submit.mockImplementationOnce(() => { throw new Error('Cannot submit') })
+  f.controller.prepareChat(f.binding); f.controller.prepareChat(f.binding)
+  expect(f.submit).toHaveBeenCalledTimes(1)
+  expect(f.snapshot().canvases).toEqual([f.canvas])
+  expect(f.snapshot().notice?.kind).toBe('explainFailed')
 })
 
 it('ignores an older summary read that completes after a new candidate', async () => {

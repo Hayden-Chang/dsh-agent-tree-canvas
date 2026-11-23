@@ -19,6 +19,8 @@ import { branchAppearance } from './appearance.ts'
 import type { NodeAppearance } from './appearance.ts'
 import { paintQuoteOrigins } from './quote-links.ts'
 import type { ColoredQuote } from './quote-links.ts'
+import { bindQuoteNavigation } from './quote-navigation.ts'
+import type { QuoteLinks, QuotePoint } from './quote-navigation.ts'
 import type { DraftJournal, EditorDraft } from './draft-journal.ts'
 import { createSummaryEditor } from './summary-editor.ts'
 import type { SummaryEditorHandle } from './summary-editor.ts'
@@ -41,13 +43,14 @@ export interface CanvasState {
   readonly generating: readonly SessionId[]
   readonly mapping: CanvasId | null
   readonly fitRequest: { readonly canvasId: CanvasId; readonly request: number } | null
-  readonly viewportTarget: { readonly sessionId: SessionId; readonly request: number } | null
+  readonly viewportTarget: { readonly sessionId: SessionId; readonly request: number; readonly focus?: boolean } | null
+  readonly quoteChoices: { readonly canvasId: CanvasId; readonly ids: readonly SessionId[]; readonly point: QuotePoint } | null
   readonly sourceTarget: QuoteNavigation & ({
     readonly sessionId: SessionId
     readonly turn: number
     readonly quote?: { readonly seq: number; readonly text: string; readonly offset: number }
   } | { readonly kind: 'summary'; readonly sessionId: SessionId; readonly quote: { readonly text: string; readonly offset: number } }) | null
-  readonly notice: { readonly id: number; readonly kind: 'failed' | 'conflict' | 'saved' | 'added' | 'removed' | 'mapped' | 'mapUnchanged' | 'mapFailed' | 'deleteFailed' | 'deleteNotStarted' | 'deleteUnavailable' | 'modelUnavailable' | 'renameFailed'; readonly sessionId?: SessionId } | null
+  readonly notice: { readonly id: number; readonly kind: 'failed' | 'conflict' | 'saved' | 'added' | 'removed' | 'mapped' | 'mapUnchanged' | 'mapFailed' | 'deleteFailed' | 'deleteNotStarted' | 'deleteUnavailable' | 'modelUnavailable' | 'renameFailed' | 'explainFailed'; readonly sessionId?: SessionId } | null
 }
 /** Injected actions and bare reactive source; components receive a bound useCanvas hook. */
 export interface CanvasFace {
@@ -60,6 +63,9 @@ export interface CanvasFace {
   readonly addRoot: (id: CanvasId, title: string) => void
   readonly fork: (id: CanvasId, sessionId: SessionId, seq: number | null, title: string) => void
   readonly quoteChild: (id: CanvasId, sessionId: SessionId, seq: number | null, title: string, text: string, source?: QuoteSource) => void
+  readonly explainChild: CanvasFace['quoteChild']
+  readonly openChild: (id: SessionId) => void
+  readonly dismissQuoteChoices: () => void
   readonly mindmap: (id: CanvasId, sessionId: SessionId, seq: number | null, text: string) => void
   readonly cancelMindmap: () => void
   readonly selectedSource: (id: SessionId) => DraftQuoteSource | undefined
@@ -93,7 +99,7 @@ export class CanvasController {
   /** Readable canvas state, including unsaved notes and pending model requests. */
   readonly source = createSnapshotStore<CanvasState>({
     canvases: [], activeId: null, loading: false, failed: false, busy: false,
-    summaries: {}, drafts: {}, saveStates: {}, summaryOnly: [], generating: [], mapping: null, fitRequest: null, sourceTarget: null, viewportTarget: null, notice: null,
+    summaries: {}, drafts: {}, saveStates: {}, summaryOnly: [], generating: [], mapping: null, fitRequest: null, sourceTarget: null, viewportTarget: null, quoteChoices: null, notice: null,
   })
   private readonly lifetime = new AbortController()
   private readonly tasks = new Set<Promise<unknown>>()
@@ -102,9 +108,10 @@ export class CanvasController {
   private readonly deleting = new Set<SessionId>()
   private readonly deleted = new Set<SessionId>()
   private readonly reads = new Set<SessionId>()
-  private readonly pendingQuotes = new Map<SessionId, { readonly text: string; readonly source?: QuoteSource }>()
+  private readonly pendingQuotes = new Map<SessionId, { readonly text: string; readonly source?: QuoteSource; readonly prompt?: string; initialized?: boolean }>()
+  private quoteLinks: QuoteLinks = new Map()
   private sourceMarker: HTMLElement | null = null
-  private focusChild: SessionId | null = null
+  private focusChild: { readonly id: SessionId; readonly enlarge: boolean } | null = null
   private readonly sourceRoots = new Map<SessionId, { element: HTMLElement; dispose: () => void }>()
   private noticeId = 0
   private viewportRequest = 0
@@ -243,14 +250,15 @@ export class CanvasController {
 
   private paintQuotes(): void {
     const quotes: ColoredQuote[] = []
-    for (const canvas of this.source.getSnapshot().canvases) {
+    const state = this.source.getSnapshot()
+    for (const canvas of state.canvases.filter(value => value.id === state.activeId)) {
       const appearances = branchAppearance(canvas.nodes)
       for (const node of canvas.nodes) {
         const origin = this.nodeOrigin(node)
-        if (origin !== undefined) quotes.push({ ...origin, tone: appearances.get(node.sessionId)?.tone ?? 'root' })
+        if (origin !== undefined) quotes.push({ ...origin, childId: node.sessionId, tone: appearances.get(node.sessionId)?.tone ?? 'root' })
       }
     }
-    paintQuoteOrigins(quotes, new Map([...this.sourceRoots].map(([id, root]) => [id, root.element])))
+    this.quoteLinks = paintQuoteOrigins(quotes, new Map([...this.sourceRoots].map(([id, root]) => [id, root.element])))
   }
 
   private receiveSummary(value: SummaryDocument): void {
@@ -287,12 +295,12 @@ export class CanvasController {
 
   private landSource(): void {
     if (this.focusChild !== null) {
-      const input = this.sourceRoots.get(this.focusChild)?.element.querySelector<HTMLElement>('[data-composer-input]')
+      const input = this.sourceRoots.get(this.focusChild.id)?.element.querySelector<HTMLElement>('[data-composer-input]')
       if (input !== undefined && input !== null && input.closest('[hidden]') === null) {
-        const sessionId = this.focusChild
+        const { id: sessionId, enlarge } = this.focusChild
         this.focusChild = null
         input.focus({ preventScroll: true })
-        this.patch({ viewportTarget: { sessionId, request: ++this.viewportRequest } })
+        this.patch({ viewportTarget: { sessionId, request: ++this.viewportRequest, ...enlarge ? { focus: true } : {} } })
       }
     }
     const target = this.source.getSnapshot().sourceTarget
@@ -333,9 +341,46 @@ export class CanvasController {
     if (this.lifetime.signal.aborted) return
     const quote = this.pendingQuotes.get(binding.sessionId)
     if (quote === undefined) return
+    if (quote.prompt !== undefined && !quote.initialized) {
+      const result = this.ctx.conversation.input.requestDraftInitialization(binding, { prompt: quote.prompt + '\n\n', whenDraftExists: 'keep' })
+      if (result === 'blocked') throw new Error('Child conversation is not ready for an explanation')
+      if (result === 'preserved') {
+        this.pendingQuotes.delete(binding.sessionId)
+        this.notice('explainFailed', binding.sessionId)
+        return
+      }
+      quote.initialized = true
+    }
     if (!this.face.insertQuote(binding.sessionId, quote.text, quote.source)) throw new Error('Child conversation could not accept the quote')
     this.pendingQuotes.delete(binding.sessionId)
-    this.focusChild = binding.sessionId
+    this.focusChild = { id: binding.sessionId, enlarge: quote.prompt !== undefined }
+    if (quote.prompt !== undefined) {
+      // The stock input owns serialization, failure recovery and the async send lifetime.
+      try { this.ctx.conversation.input.for(binding.ctx).submit('queue', 'click') }
+      catch { this.notice('explainFailed', binding.sessionId) }
+    }
+  }
+
+  private quoteChild(id: CanvasId, sessionId: SessionId, seq: number | null, title: string, text: string, source?: QuoteSource, explain = false): void {
+    if (this.source.getSnapshot().busy || text.trim() === '') return
+    this.run(async () => {
+      const canvas = await this.value(this.ctx.remote.sessionCanvas.fork(id, sessionId, seq, title,
+        source === undefined ? undefined : { text, source }))
+      if (this.lifetime.signal.aborted) return
+      const child = canvas.nodes.at(-1)
+      if (child === undefined) throw new Error('Fork returned no child conversation')
+      this.pendingQuotes.set(child.sessionId, { text, ...source === undefined ? {} : { source },
+        ...explain ? { prompt: this.ctx.locale.bind(NS)('explainPrompt') } : {} })
+      this.receiveCanvas(canvas)
+      this.patch({ activeId: id, quoteChoices: null, summaryOnly: this.source.getSnapshot().summaryOnly.filter(value => value !== id) })
+      this.openPanel()
+    }, true)
+  }
+
+  private linkedTitle(id: SessionId): string {
+    const transcript = this.ctx.sessions.binding(id)?.session.projections.faceOf('sessionCanvas').getSnapshot() as CanvasTranscript | undefined
+    const state = this.source.getSnapshot()
+    return transcript?.title ?? state.canvases.find(canvas => canvas.id === state.activeId)?.nodes.find(node => node.sessionId === id)?.title ?? ''
   }
 
   /**
@@ -386,7 +431,7 @@ export class CanvasController {
   readonly face: CanvasFace = {
     hooks: { canvas: this.source },
     reload: () => { this.reload() },
-    selectCanvas: (id) => { this.patch({ activeId: id }) },
+    selectCanvas: (id) => { ++this.sourceRequest; this.focusChild = null; this.patch({ activeId: id, quoteChoices: null, sourceTarget: null, viewportTarget: null }); this.paintQuotes() },
     createCanvas: (title) => { this.run(async () => {
       const value = await this.value(this.ctx.remote.sessionCanvas.create(title))
       this.receiveCanvas(value); this.patch({ activeId: value.id })
@@ -412,25 +457,29 @@ export class CanvasController {
         if (this.lifetime.signal.aborted) return
         const child = canvas.nodes.at(-1)
         if (child === undefined) throw new Error('Fork returned no child conversation')
-        this.focusChild = child.sessionId
+        this.focusChild = { id: child.sessionId, enlarge: false }
         this.receiveCanvas(canvas)
         this.patch({ activeId: id, sourceTarget: null,
           summaryOnly: this.source.getSnapshot().summaryOnly.filter(value => value !== id) })
         this.openPanel()
       }, true)
     },
-    quoteChild: (id, sessionId, seq, title, text, source) => { this.run(async () => {
-      const canvas = await this.value(this.ctx.remote.sessionCanvas.fork(id, sessionId, seq, title,
-        source === undefined ? undefined : { text, source }))
-      if (this.lifetime.signal.aborted) return
-      // The fork transaction appends its new child to the returned canvas.
-      const child = canvas.nodes.at(-1)
-      if (child === undefined) throw new Error('Fork returned no child conversation')
-      this.pendingQuotes.set(child.sessionId, { text, ...source === undefined ? {} : { source } })
-      this.receiveCanvas(canvas)
-      this.patch({ activeId: id, summaryOnly: this.source.getSnapshot().summaryOnly.filter(value => value !== id) })
-      this.openPanel()
-    }, true) },
+    quoteChild: (id, sessionId, seq, title, text, source) => { this.quoteChild(id, sessionId, seq, title, text, source) },
+    explainChild: (id, sessionId, seq, title, text, source) => { this.quoteChild(id, sessionId, seq, title, text, source, true) },
+    dismissQuoteChoices: () => { this.patch({ quoteChoices: null }) },
+    openChild: (sessionId) => {
+      const state = this.source.getSnapshot(), canvas = state.canvases.find(value => value.id === state.activeId)
+      const node = canvas?.nodes.find(value => value.sessionId === sessionId)
+      if (canvas === undefined || node === undefined || this.deleting.has(sessionId)) return
+      const request = ++this.sourceRequest
+      this.focusChild = null
+      this.patch({ sourceTarget: null, quoteChoices: null })
+      this.run(async () => {
+        if (node.collapsed) this.receiveCanvas(await this.value(this.ctx.remote.sessionCanvas.updateNode({ canvasId: canvas.id, sessionId, collapsed: false })))
+        if (request !== this.sourceRequest || this.source.getSnapshot().activeId !== canvas.id) return
+        this.patch({ viewportTarget: { sessionId, request: ++this.viewportRequest, focus: true } })
+      })
+    },
     mindmap: (id, sessionId, seq, text) => {
       if (this.mapping !== null) return
       const cancellation = this.mapping = new AbortController()
@@ -494,8 +543,8 @@ export class CanvasController {
           }
           Reflect.deleteProperty(summaries, target); Reflect.deleteProperty(drafts, target); Reflect.deleteProperty(saveStates, target)
         }
-        if (this.focusChild !== null && removed.has(this.focusChild)) this.focusChild = null
-        this.patch({ summaries, drafts, saveStates, sourceTarget: null, viewportTarget: null })
+        if (this.focusChild !== null && removed.has(this.focusChild.id)) this.focusChild = null
+        this.patch({ summaries, drafts, saveStates, sourceTarget: null, viewportTarget: null, quoteChoices: null })
         this.notice('removed')
       } catch (error) {
         const unavailable = typeof error === 'object' && error !== null && 'code' in error && error.code === 'canvas/delete-unavailable'
@@ -508,7 +557,7 @@ export class CanvasController {
       const canvas = await this.value(this.ctx.remote.sessionCanvas.updateNode({ canvasId: id, sessionId, mode: 'chat', collapsed: false }))
       if (this.lifetime.signal.aborted) return
       if (!this.face.insertQuote(sessionId, text, { kind: 'summary', sessionId, offset })) throw new Error('Conversation could not accept the quote')
-      this.focusChild = sessionId
+      this.focusChild = { id: sessionId, enlarge: false }
       this.receiveCanvas(canvas)
       this.patch({ activeId: id, sourceTarget: null,
         summaryOnly: this.source.getSnapshot().summaryOnly.filter(value => value !== id) })
@@ -703,7 +752,18 @@ export class CanvasController {
         },
       })
       const unsubscribe = input.state.subscribe(() => { this.paintQuotes() })
-      this.sourceRoots.set(id, { element, dispose: () => { unsubscribe(); dispose() } })
+      const unlink = bindQuoteNavigation(element, {
+        links: () => this.quoteLinks,
+        title: ids => ids.map(id => this.linkedTitle(id)).join('\n'),
+        open: (ids, point) => {
+          const state = this.source.getSnapshot(), canvas = state.canvases.find(value => value.id === state.activeId)
+          const targets = ids.filter(id => canvas?.nodes.some(node => node.sessionId === id))
+          if (canvas === undefined || targets.length === 0) return
+          if (targets.length === 1) this.face.openChild(targets[0]!)
+          else this.patch({ quoteChoices: { canvasId: canvas.id, ids: targets, point } })
+        },
+      })
+      this.sourceRoots.set(id, { element, dispose: () => { unsubscribe(); unlink(); dispose() } })
       this.paintQuotes(); this.landSource()
     },
     dismissNotice: () => { this.patch({ notice: null }) },
@@ -722,6 +782,7 @@ export class CanvasController {
     for (const { dispose } of this.sourceRoots.values()) dispose()
     this.sourceRoots.clear()
     paintQuoteOrigins([], new Map())
+    this.quoteLinks = new Map()
     this.sourceMarker?.removeAttribute('data-canvas-quote-source')
     this.sourceMarker?.style.removeProperty('--canvas-quote-color')
     this.sourceMarker = null

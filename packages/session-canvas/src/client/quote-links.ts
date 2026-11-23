@@ -3,9 +3,11 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { QuoteOrigin } from '../types.ts'
 import type { NodeAppearance } from './appearance.ts'
 import { quoteRange, visibleSourceRow } from './quote-highlight.ts'
+import type { QuoteLink, QuoteLinks } from './quote-navigation.ts'
 
 export interface ColoredQuote extends QuoteOrigin {
   readonly tone: NodeAppearance['tone']
+  readonly childId?: SessionId
 }
 const tones = ['root', 'red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const
 
@@ -73,11 +75,12 @@ function paintOverlays(groups: ReadonlyMap<HTMLElement, readonly ColoredRange[]>
 }
 
 /** Rebuild ranges after text rendering, mode changes, branch removal, or draft recovery. */
-export function paintQuoteOrigins(quotes: readonly ColoredQuote[], roots: ReadonlyMap<SessionId, HTMLElement>): void {
+export function paintQuoteOrigins(quotes: readonly ColoredQuote[], roots: ReadonlyMap<SessionId, HTMLElement>): QuoteLinks {
   const native = typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined'
   const groups = new Map<string, Range[]>()
   const fallback = new Map<HTMLElement, ColoredRange[]>()
-  for (const { text, source, tone } of quotes) {
+  const links = new Map<HTMLElement, QuoteLink[]>()
+  for (const { text, source, tone, childId } of quotes) {
     const root = roots.get(source.sessionId)
     const row = visibleSourceRow(root, 'kind' in source ? '[data-summary-document]'
       : `[data-chat-seq="${source.seq}"]`, { text, offset: source.offset })
@@ -85,6 +88,10 @@ export function paintQuoteOrigins(quotes: readonly ColoredQuote[], roots: Readon
     const message = row.querySelector<HTMLElement>('[data-text-interaction-source]') ?? row
     const range = quoteRange(message, text, source.offset)
     if (range === undefined) continue
+    if (childId !== undefined) {
+      const entries = links.get(message) ?? []
+      entries.push({ range, childId }); links.set(message, entries)
+    }
     const ranges = groups.get(tone) ?? []
     ranges.push(range); groups.set(tone, ranges)
     if (!native) {
@@ -93,10 +100,11 @@ export function paintQuoteOrigins(quotes: readonly ColoredQuote[], roots: Readon
     }
   }
   paintOverlays(fallback)
-  if (!native) return
+  if (!native) return links
   for (const tone of tones) {
     const name = `session-canvas-quote-${tone}`, ranges = groups.get(tone)
     if (ranges?.length) CSS.highlights.set(name, new Highlight(...ranges))
     else CSS.highlights.delete(name)
   }
+  return links
 }

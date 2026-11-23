@@ -28,6 +28,7 @@
 .page :global([data-canvas-quote-host]) { position: relative; }
 .page :global([data-canvas-quote-overlay]) { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
 .page :global([data-canvas-quote-overlay] > span) { position: absolute; pointer-events: none; border-radius: 2px; }
+.page :global([data-canvas-quote-link]) { cursor: pointer; }
 .page :global(::highlight(session-canvas-quote)) { background-color: color-mix(in srgb, var(--canvas-quote-color, var(--dsw-alias-state-business-primary)) 35%, transparent); color: var(--dsw-alias-label-primary); }
 .page :global(::highlight(session-canvas-quote-root)) { background-color: color-mix(in srgb, var(--dsw-alias-diagram-root) 35%, transparent); color: var(--dsw-alias-label-primary); }
 .page :global(::highlight(session-canvas-quote-red)) { background-color: color-mix(in srgb, var(--dsw-alias-diagram-red) 35%, transparent); color: var(--dsw-alias-label-primary); }
@@ -109,7 +110,7 @@
 .sources blockquote { margin: 12px 0 6px; white-space: pre-wrap; padding-left: 12px; border-left: 0.5px solid var(--dsw-alias-border-l3); }
 .empty { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; height: 100%; padding: 24px; box-sizing: border-box; color: var(--dsw-alias-label-secondary); text-align: center; }
 .zoom { position: absolute; bottom: 20px; right: 20px; z-index: 3; display: flex; gap: 4px; align-items: center; padding: 6px; border: 0; border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-diagram-surface); box-shadow: var(--dsw-elevation-panel); font-size: 12px; }
-.selection { display: flex; gap: 4px; padding: 4px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-base); box-shadow: 0 4px 16px color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent); }
+.selection { display: flex; flex-wrap: wrap; max-width: min(640px, calc(100vw - 32px)); gap: 4px; padding: 4px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-lg); background: var(--dsw-alias-bg-base); box-shadow: 0 4px 16px color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent); }
 @media (pointer: coarse) { .editor :global(.ProseMirror) { font-size: 16px; } }
 @media (max-width: 760px) { .toolbar { gap: 4px; padding: 8px; } .title { width: 100%; } }
 .viewport[data-canvas-hand], .viewport[data-canvas-hand] * { cursor: grab; }

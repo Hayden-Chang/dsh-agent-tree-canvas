@@ -48,9 +48,9 @@ function fixture() {
   const nodes: CanvasNode[] = Array.from({ length: 16 }, (_, index) => ({ sessionId: `node-${index}` as SessionId,
     parentId: index === 0 ? null : 'node-0' as SessionId, forkSeq: index === 0 ? null : 10,
     title: `Node ${index}`, x: index === 0 ? 80 : 720, y: index * 360, mode: 'chat', collapsed: false }))
-  const state: CanvasState = { canvases: [{ id, title: 'Many conversations', nodes, revision: 1 }], activeId: id,
+  let state: CanvasState = { canvases: [{ id, title: 'Many conversations', nodes, revision: 1 }], activeId: id,
     loading: false, failed: false, busy: false, viewportTarget: null, fitRequest: null, mapping: null,
-    summaryOnly: [], summaries: {}, drafts: {}, saveStates: {}, generating: [], sourceTarget: null, notice: null }
+    summaryOnly: [], summaries: {}, drafts: {}, saveStates: {}, generating: [], sourceTarget: null, quoteChoices: null, notice: null }
   let navigation!: CanvasNavigation
   const owners = new Map<SessionId, Owner>()
   const renderSlot = vi.fn((_key: string, owner: Owner) => { owners.set(owner.node.sessionId, owner); return createElement(Card, owner) })
@@ -60,7 +60,8 @@ function fixture() {
   const ui = render(createElement(CanvasPage, props))
   const viewport = ui.getByLabelText('canvas'), world = ui.container.querySelector<HTMLElement>('[data-canvas-world]')!
   Object.defineProperties(viewport, { clientWidth: { value: 1200 }, clientHeight: { value: 800 } })
-  return { ...ui, nodes, world, renderSlot, owners, navigation }
+  return { ...ui, nodes, world, renderSlot, owners, navigation,
+    publish: (value: Partial<CanvasState>) => { state = { ...state, ...value }; ui.rerender(createElement(CanvasPage, props)) } }
 }
 
 it('pans sixteen conversations without rendering their slots again, while live content keeps updating', () => {
@@ -99,4 +100,19 @@ it('only renders the moved conversation and updates its connector preview', () =
   act(() => f.owners.get(id)!.onMove(id, null))
   expect(f.renderSlot).toHaveBeenCalledTimes(18)
   expect(edge.getAttribute('d')).toBe(original)
+})
+
+it('focuses an explicit linked-child request without toggling it off or losing the previous viewport', () => {
+  vi.stubGlobal('CSS', { escape: (value: string) => value })
+  const f = fixture(), sessionId = 'node-1' as SessionId
+  act(() => f.navigation.pan(140, -80))
+  const before = f.world.style.transform
+  f.publish({ viewportTarget: { sessionId, request: 1, focus: true } })
+  const focused = f.world.style.transform
+  expect(focused).not.toBe(before)
+  expect(f.owners.get(sessionId)?.focused).toBe(true)
+  f.publish({ viewportTarget: { sessionId, request: 2, focus: true } })
+  expect(f.world.style.transform).toBe(focused)
+  fireEvent.click(screen.getByRole('button', { name: 'Focus node-1' }))
+  expect(f.world.style.transform).toBe(before)
 })

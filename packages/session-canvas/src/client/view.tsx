@@ -7,7 +7,7 @@ import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversa
 import type { CanvasId, CanvasNode } from '../types.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { DraftQuoteSource } from './quote-reference.ts'
-import type { CanvasFace } from './controller.ts'
+import type { CanvasFace, CanvasState } from './controller.ts'
 import { NodeName } from './node-name.tsx'
 import { useSummarySelection } from './summary-selection.ts'
 import { subtreeIds } from '../subtree.ts'
@@ -46,13 +46,30 @@ function SummaryEditor({ sessionId, label, mount }: {
 export function CanvasIcon({ size }: PropsRuntime<'sidebar.panellist'>) { return <IconBranchOutlineRegular size={size} /> }
 
 /** Global feedback remains mounted when a canvas or node is hidden. */
-export function CanvasToast({ useCanvas, dismissNotice, showSummary, t }: Face) {
+export function CanvasToast({ useCanvas, dismissNotice, showSummary, openChild, t }: Face) {
   const notice = useCanvas(state => state.notice)
   if (notice === null) return null
   const sourceId = notice.sessionId
   return <Toast key={notice.id} text={t(notice.kind)} onDone={dismissNotice}
     {...notice.kind === 'saved' || notice.kind === 'added' || notice.kind === 'removed' || notice.kind === 'mapped' ? { tone: 'success' as const } : { holdMs: 7000 }}
-    {...sourceId === undefined ? {} : { actions: [{ label: t('viewSummary'), onClick: () => { showSummary(sourceId); dismissNotice() } }] }} />
+    {...sourceId === undefined ? {} : { actions: [{ label: t(notice.kind === 'explainFailed' ? 'chat' : 'viewSummary'), onClick: () => {
+      if (notice.kind === 'explainFailed') openChild(sourceId)
+      else showSummary(sourceId)
+      dismissNotice()
+    } }] }} />
+}
+
+function QuoteChoices({ choice, ...props }: Pick<PageProps, 'useSessions' | 'useCanvas' | 'openChild' | 'dismissQuoteChoices'> & {
+  readonly choice: NonNullable<CanvasState['quoteChoices']>
+}) {
+  const names = props.useSessions(state => state.projectionsBySession)
+  const canvas = props.useCanvas(state => state.canvases.find(value => value.id === choice.canvasId))
+  return <Menu open anchor={null} portal compact side="top" className={css.selectionAnchor}
+    getAnchorRect={() => new DOMRect(choice.point.x, choice.point.y, 0, 0)} onClose={props.dismissQuoteChoices}
+    items={choice.ids.flatMap(id => {
+      const node = canvas?.nodes.find(node => node.sessionId === id)
+      return node === undefined ? [] : [{ id, label: names[id]?.values.sessionCanvas?.title ?? node.title }]
+    })} onSelect={id => { props.openChild(id as SessionId) }} />
 }
 
 type SceneProps = Pick<CardProps, 'scale' | 'onMove'> & {
@@ -107,7 +124,7 @@ const CanvasScene = memo(function CanvasScene({ canvasId, nodes, sizes, appearan
 /** Pan and zoom a canvas; conversation scrolling and text selection remain local to cards. */
 export function CanvasPage(props: PageProps) {
   const { useCanvas, t, renderSlot, bindNavigation } = props
-  const { canvases, activeId, loading, failed, busy, viewportTarget, fitRequest, mapping, summaryOnly: summaryCanvases, summaries } = useCanvas(state => state)
+  const { canvases, activeId, loading, failed, busy, viewportTarget, quoteChoices, fitRequest, mapping, summaryOnly: summaryCanvases, summaries } = useCanvas(state => state)
   const canvas = canvases.find(value => value.id === activeId)
   const summaryOnly = activeId !== null && summaryCanvases.includes(activeId)
   const appearance = useMemo(() => branchAppearance(canvas?.nodes ?? []), [canvas?.nodes])
@@ -184,23 +201,12 @@ export function CanvasPage(props: PageProps) {
       setViewport(fitCanvas(element)); setFocus(null)
     }
   }, [activeId, summaryOnly, layoutReady, compactNodes, canvas?.nodes, summaries, viewport, measurements, fitRequest])
-  useLayoutEffect(() => {
-    const element = viewportRef.current
-    if (viewportTarget === null || element === null) return
-    const card = element.querySelector<HTMLElement>(`[data-canvas-session="${CSS.escape(viewportTarget.sessionId)}"]`)
-    if (card === null) return
-    setFocus(null)
-    setViewport(value => ({ ...value,
-      x: (element.clientWidth - card.offsetWidth * value.scale) / 2 - card.offsetLeft * value.scale,
-      y: Math.max(0, (element.clientHeight - card.offsetHeight * value.scale) / 2) - card.offsetTop * value.scale,
-    }))
-  }, [activeId, viewportTarget])
   const select = (id: CanvasId): void => {
     props.selectCanvas(id); setMovement(null); setViewport({ x: 0, y: 0, scale: 1 }); setFocus(null); setEditingName(false)
   }
-  const focusNode = useCallback((sessionId: SessionId): void => {
+  const focusNode = useCallback((sessionId: SessionId, toggle = true): void => {
     const { viewport, focus } = currentView.current
-    if (focus?.sessionId === sessionId) { setViewport(focus.previous); setFocus(null); return }
+    if (toggle && focus?.sessionId === sessionId) { setViewport(focus.previous); setFocus(null); return }
     const element = viewportRef.current
     const card = element?.querySelector<HTMLElement>(`[data-canvas-session="${CSS.escape(sessionId)}"]`)
     if (element == null || card == null) return
@@ -210,6 +216,18 @@ export function CanvasPage(props: PageProps) {
     setViewport({ scale, x: (element.clientWidth - card.offsetWidth * scale) / 2 - card.offsetLeft * scale,
       y: (element.clientHeight - card.offsetHeight * scale) / 2 - card.offsetTop * scale })
   }, [])
+  useLayoutEffect(() => {
+    const element = viewportRef.current
+    if (viewportTarget === null || element === null) return
+    if (viewportTarget.focus) { focusNode(viewportTarget.sessionId, false); return }
+    const card = element.querySelector<HTMLElement>(`[data-canvas-session="${CSS.escape(viewportTarget.sessionId)}"]`)
+    if (card === null) return
+    setFocus(null)
+    setViewport(value => ({ ...value,
+      x: (element.clientWidth - card.offsetWidth * value.scale) / 2 - card.offsetLeft * value.scale,
+      y: Math.max(0, (element.clientHeight - card.offsetHeight * value.scale) / 2) - card.offsetTop * value.scale,
+    }))
+  }, [activeId, viewportTarget, focusNode])
   const zoom = (scale: number): void => {
     const element = viewportRef.current
     if (element === null) return
@@ -242,6 +260,7 @@ export function CanvasPage(props: PageProps) {
       {mapping !== null && <span role="status">{t('mapping')} <Button size="sm" onClick={props.cancelMindmap}>{t('cancel')}</Button></span>}
       <Button size="sm" disabled={loading} onClick={props.reload}>{t('refresh')}</Button>
     </header>
+    {quoteChoices !== null && quoteChoices.canvasId === activeId && <QuoteChoices {...props} choice={quoteChoices} />}
     <div ref={attachViewport} className={css.viewport} aria-label={t('canvas')} tabIndex={0}>
       {(canvas === undefined || canvas.nodes.length === 0) && <div className={css.empty}>
         <IconBranchOutlineRegular size={36} />
@@ -495,13 +514,14 @@ export function CanvasContent(props: ContentProps) {
           getAnchorRect={() => summarySelection.selection?.range.getBoundingClientRect() ?? null}
           items={[{ id: 'quote', label: t('quoteText'), disabled: state.busy },
             { id: 'child', label: t('quoteChild'), disabled: state.busy },
+            { id: 'explain', label: t('explainChild'), disabled: state.busy },
             { id: 'mindmap', label: t('mindmap'), disabled: state.busy }]}
           onSelect={(action) => {
             const selected = summarySelection.selection
             if (selected === null) return
             if (action === 'quote') props.quoteSummary(canvasId, sessionId, selected.text, selected.offset)
             else if (action === 'mindmap') props.mindmap(canvasId, sessionId, null, selected.text)
-            else props.quoteChild(canvasId, sessionId, null, `${node.title} · ${t('fork')}`, selected.text,
+            else (action === 'explain' ? props.explainChild : props.quoteChild)(canvasId, sessionId, null, `${node.title} · ${t('fork')}`, selected.text,
               { kind: 'summary', sessionId, offset: selected.offset })
             summarySelection.clear()
           }} />
@@ -525,7 +545,7 @@ export function CanvasContent(props: ContentProps) {
 }
 
 /** Stock selection slot, with canvas actions and exact source captured before dismissal. */
-export function SelectionActions({ sessionId, readText, dismiss, clearSelection, excerpt, quoteChild, insertQuote, mindmap,
+export function SelectionActions({ sessionId, readText, dismiss, clearSelection, excerpt, quoteChild, explainChild, insertQuote, mindmap,
   inputActions, selection, useCanvas, useProjection, t }: PropsRuntime<'conversation.chat.text-interaction'> & Face & {
     readonly selection: DraftQuoteSource | undefined
   }) {
@@ -549,6 +569,12 @@ export function SelectionActions({ sessionId, readText, dismiss, clearSelection,
         quoteChild(canvas.id, sessionId, turn.seq, `${node.title} · ${t('fork')}`, text, selection)
         clearSelection(); dismiss()
       }}>{t('quoteChild')}</Button>
+      <Button size="sm" disabled={state.busy || turn === undefined} onClick={() => {
+        const text = readText(), node = canvas.nodes.find(node => node.sessionId === sessionId)
+        if (text === null || node === undefined || turn === undefined) { dismiss(); return }
+        explainChild(canvas.id, sessionId, turn.seq, `${node.title} · ${t('fork')}`, text, selection)
+        clearSelection(); dismiss()
+      }}>{t('explainChild')}</Button>
       <Button size="sm" disabled={state.busy || turn === undefined} onClick={() => {
         const text = readText()
         if (text !== null && turn !== undefined) mindmap(canvas.id, sessionId, turn.seq, text)
