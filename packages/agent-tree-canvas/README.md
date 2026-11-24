@@ -31,7 +31,7 @@ Node headers follow the durable DSH conversation name. Forked conversations are 
 
 Enable this optional bundle in a Web profile, then open **Agent tree canvas** in the sidebar. A custom composition can load its [bundle patch](cordis.patch.yml) alongside the standard Web services. The plugin starts new Sessions with its conversation preset, without code execution or filesystem tools.
 
-This is an independent plugin for unmodified DSH **0.2.2-rc.1 or a later 0.2.2 rc release** (Node >=24.9). Its declared range is `>=0.2.2-rc.1 <0.2.3`; the persona and compaction presets it mounts come from the host profile, so the plugin installs no private copies of them. Install the built archive with the standard plugin manager; no DSH source checkout or DSH rebuild is required:
+This is an independent plugin for unmodified DSH **0.2.2-rc.1 or a later 0.2.x release (below 0.3)** (Node >=24.9). Its declared range is `>=0.2.2-rc.1 <0.3.0-0`; the persona and compaction presets it mounts come from the host profile, so the plugin installs no private copies of them. Install the built archive with the standard plugin manager; no DSH source checkout or DSH rebuild is required:
 
 ```sh
 dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.8.tgz
