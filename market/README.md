@@ -26,14 +26,14 @@ pnpm 默认不允许依赖运行构建脚本。第一次安装时 dsh 会提示�
 索引只能由脚本生成，不要手写：
 
 ```sh
-# 1. 先提交要发布的插件代码
-git commit -am "Release my change"
+# 1. 先提交要发布的插件代码（-A 才能带上新增文件）
+git add -A && git commit -m "Release my change"
 
 # 2. 用该 commit 生成索引
 pnpm run market:index -- --commit "$(git rev-parse HEAD)"
 
 # 3. 提交索引
-git add market/index.json && git commit -m "Update plugin index"
+git add -A && git commit -m "Update plugin index"
 ```
 
 脚本从 `packages/agent-tree-canvas/package.json` 读取名称、版本、`engines.dsh` 和仓库地址，
