@@ -125,6 +125,24 @@ const localized = (field, fallback) => {
   return text
 }
 
+const current = {
+  version: manifest.version,
+  publishTimestamp: Number(timestamp),
+  source: { type: 'git', url: repository, commit, path: manifest.repository.directory },
+  engines: { dsh: manifest.engines.dsh },
+}
+
+// A version already listed stays listed, so an installed copy can still pick
+// it from the index's version list after a newer release appears.
+let released = []
+try {
+  const existing = JSON.parse(await readFile(join(root, indexPath), 'utf8'))
+  released = existing.plugins?.find(plugin => plugin.name === manifest.name)?.versions ?? []
+} catch {
+  released = []
+}
+const versions = [current, ...released.filter(version => version.version !== current.version)]
+
 const index = {
   format: 1,
   title: options.title ?? { en: 'Agent tree canvas', zh: '会话画布' },
@@ -136,14 +154,7 @@ const index = {
       author: options.author ?? 'Hayden-Chang',
       homepage: manifest.homepage,
       repository: { url: repository, directory: manifest.repository.directory },
-      versions: [
-        {
-          version: manifest.version,
-          publishTimestamp: Number(timestamp),
-          source: { type: 'git', url: repository, commit, path: manifest.repository.directory },
-          engines: { dsh: manifest.engines.dsh },
-        },
-      ],
+      versions,
     },
   ],
 }

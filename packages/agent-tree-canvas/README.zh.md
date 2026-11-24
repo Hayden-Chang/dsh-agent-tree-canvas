@@ -34,7 +34,7 @@ kind: "package-bundle"
 这是面向原版 DSH **0.2.2-rc.1 起的 0.2.x 版本（不含 0.3）**的独立插件（Node >=24.9），声明范围 `>=0.2.2-rc.1 <0.3.0-0`。预设使用的 persona 与 compaction-basic 由宿主 profile 提供，插件不再安装自己的副本。通过标准插件管理器安装构建产物即可，无需 DSH 源码或重新编译 DSH：
 
 ```sh
-dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.8.tgz
+dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.9.tgz
 dsh web
 ```
 

@@ -7,7 +7,7 @@
 需要 Node >=24.9，以及已安装的 DSH 0.2.2-rc.1 或更新的 0.2.x 版本（不含 0.3）。
 
 ```sh
-dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.8.tgz
+dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.9.tgz
 dsh web
 ```
 
