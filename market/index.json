@@ -35,6 +35,19 @@
       },
       "versions": [
         {
+          "version": "0.1.9",
+          "publishTimestamp": 1795527616,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/Hayden-Chang/dsh-agent-tree-canvas",
+            "commit": "4e14cd95287fa2b74782da1a91dca112171e6384",
+            "path": "packages/agent-tree-canvas"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1 <0.3.0-0"
+          }
+        },
+        {
           "version": "0.1.8",
           "publishTimestamp": 1795526897,
           "source": {
