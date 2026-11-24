@@ -27,9 +27,10 @@ const usage = `Usage: pnpm run market:index -- [options]
   --timestamp <seconds> Publish time (default: the commit's committer time).
   --url <url>           Address the index will be served from.
   --author <text>       Author shown in Discover (default: Hayden-Chang).
+  --title <text>        Index name shown in Discover (default: Agent tree canvas).
   --check               Fail when ${indexPath} differs from the generated index.`
 
-const known = new Set(['commit', 'timestamp', 'url', 'author', 'title', 'check'])
+const known = new Set(['commit', 'timestamp', 'url', 'author', 'title', 'check', 'help'])
 const options = {}
 const arguments_ = process.argv.slice(2).filter(argument => argument !== '--')
 for (let index = 0; index < arguments_.length; index += 1) {
@@ -38,9 +39,9 @@ for (let index = 0; index < arguments_.length; index += 1) {
   const equals = argument.indexOf('=')
   const name = equals === -1 ? argument.slice(2) : argument.slice(2, equals)
   if (!known.has(name)) throw new Error(`Unknown option --${name}\n\n${usage}`)
-  if (name === 'check') {
-    if (equals !== -1) throw new Error('--check takes no value')
-    options.check = true
+  if (name === 'check' || name === 'help') {
+    if (equals !== -1) throw new Error(`--${name} takes no value`)
+    options[name] = true
     continue
   }
   if (equals !== -1) {
@@ -53,8 +54,24 @@ for (let index = 0; index < arguments_.length; index += 1) {
   index += 1
 }
 
+if (options.help) {
+  console.log(usage)
+  process.exit(0)
+}
+
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
-const requested = options.commit ?? 'HEAD'
+
+// In check mode the committed index names the commit to compare against, so
+// `--check` keeps passing after the index itself is committed.
+let requested = options.commit
+if (!requested && options.check) {
+  try {
+    requested = JSON.parse(await readFile(join(root, indexPath), 'utf8')).plugins?.[0]?.versions?.[0]?.source?.commit
+  } catch {
+    requested = undefined
+  }
+}
+requested ??= 'HEAD'
 let commit
 try {
   commit = git('rev-parse', '--verify', `${requested}^{commit}`).trim()
