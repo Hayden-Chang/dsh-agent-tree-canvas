@@ -6,7 +6,7 @@ import { beforeAll, afterAll, expect, it } from 'vitest'
 import { BlockAssembler } from '@stock/llm'
 import { launchWebScaffold } from '@stock/scaffold'
 import type { WebScaffold } from '@stock/scaffold'
-import type {} from '../packages/session-canvas/src/index.ts'
+import type {} from '../packages/agent-tree-canvas/src/index.ts'
 
 interface QualityCase {
   id: string
@@ -50,7 +50,7 @@ const output = process.env.CANVAS_REAL_OUTPUT
 if (!output || process.env.DSH_SNAPSHOT !== 'record' || !process.env.DEEPSEEK_API_KEY) throw new Error('Real quality run requires DSH_SNAPSHOT=record, CANVAS_REAL_OUTPUT and DEEPSEEK_API_KEY')
 beforeAll(async () => {
   await mkdir(output, { recursive: true })
-  host = await launchWebScaffold({ profile: { packages: [{ dir: process.env.CANVAS_PACKAGE_DIR ?? fileURLToPath(new URL('../packages/session-canvas', import.meta.url)), enabled: true }] }, compareReplaySession: false })
+  host = await launchWebScaffold({ profile: { packages: [{ dir: process.env.CANVAS_PACKAGE_DIR ?? fileURLToPath(new URL('../packages/agent-tree-canvas', import.meta.url)), enabled: true }] }, compareReplaySession: false })
 }, 120_000)
 afterAll(async () => { await host?.close() }, 120_000)
 
@@ -64,13 +64,13 @@ it.each(cases)('real quality: $id', async (sample) => {
       output: assembler.blocks().filter(block => block.type === 'text').map(block => block.text).join('') })
   })
   try {
-    const canvas = await host.ctx.sessionCanvas.addRoot((await host.ctx.sessionCanvas.create(sample.id)).id, sample.title)
+    const canvas = await host.ctx.agentTreeCanvas.addRoot((await host.ctx.agentTreeCanvas.create(sample.id)).id, sample.title)
     const id = canvas.nodes[0]!.sessionId
     host.ctx.agents.get(id)!.model.select({ provider: 'deepseek-official', model: 'deepseek-flash' })
     const began = Date.now()
-    const result = await host.ctx.sessionCanvas.mindmap(canvas.id, id, null, sample.text, new AbortController().signal)
+    const result = await host.ctx.agentTreeCanvas.mindmap(canvas.id, id, null, sample.text, new AbortController().signal)
     const nodes = result.canvas.nodes.filter(node => result.createdSessionIds.includes(node.sessionId))
-    const records = nodes.map(node => ({ sessionId: node.sessionId, parentId: node.parentId, text: host.ctx.sessionCanvas.summary(node.sessionId).markdown }))
+    const records = nodes.map(node => ({ sessionId: node.sessionId, parentId: node.parentId, text: host.ctx.agentTreeCanvas.summary(node.sessionId).markdown }))
     await writeFile(join(output, sample.id + '.json'), JSON.stringify({ sample, durationMs: Date.now() - began, captures, nodes: records }, (_key, value) => value instanceof RegExp ? value.toString() : value, 2) + '\n')
     console.log(JSON.stringify({ sample: sample.id, nodeCount: records.length, durationMs: Date.now() - began }))
     expect(captures.length).toBeGreaterThanOrEqual(2)

@@ -1,4 +1,0 @@
-# Optional Session canvas over the Web profile.
-- insert:
-    - id: session-canvas
-      name: '@deepseek-ai/dsh-session-canvas'

@@ -1,12 +1,12 @@
 {
-  "name": "session-canvas-plugin-development",
+  "name": "agent-tree-canvas-plugin-development",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.5",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "vitest run packages/session-canvas/tests",
-    "pack": "pnpm --dir packages/session-canvas pack --pack-destination ../../dist",
+    "test": "vitest run packages/agent-tree-canvas/tests",
+    "pack": "pnpm --dir packages/agent-tree-canvas pack --pack-destination ../../dist",
     "typecheck": "tsc -p tsconfig.tests.host.json && tsc -p tsconfig.tests.client.json",
     "test:web": "vitest run --config vitest.web.config.ts"
   },

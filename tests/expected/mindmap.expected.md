@@ -1,4 +1,4 @@
-- text: Session canvas
+- text: Agent tree canvas
 - combobox "Choose canvas":
   - option "New canvas" [selected]
 - button "New canvas"

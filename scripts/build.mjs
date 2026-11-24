@@ -7,7 +7,7 @@ import { build } from 'esbuild'
 import { transform } from 'lightningcss'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const directory = join(root, 'packages/session-canvas')
+const directory = join(root, 'packages/agent-tree-canvas')
 const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
 const tsc = join(root, 'node_modules/typescript/bin/tsc')
 const compile = face => execFileSync(process.execPath, [tsc, '-b', `tsconfig.${face}.json`], { cwd: root, stdio: 'inherit' })
