@@ -28,6 +28,7 @@ if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`--commit must be a full 40-
 const repository = manifest.repository?.url?.replace(/^git\+/, '').replace(/\.git$/, '')
 if (!repository) throw new Error('package.json must declare repository.url')
 const published = argument('timestamp') ?? Math.floor(Date.now() / 1000)
+const indexUrl = argument('url') ?? 'https://raw.githubusercontent.com/Hayden-Chang/dsh-agent-tree-canvas/main/market/index.json'
 
 const locale = async name => {
   try {
@@ -63,7 +64,13 @@ const index = {
   ],
 }
 
+// Validate with the same parser dsh uses, so a served index cannot be rejected.
+const { parseMarketIndex, marketInstallTarget } = await import('@deepseek-ai/dsh-plugin-market-index')
+const parsed = parseMarketIndex(index, indexUrl)
+const target = marketInstallTarget(parsed.plugins[0].name, parsed.plugins[0].versions[0])
+
 const output = join(root, 'market/index.json')
 await mkdir(join(root, 'market'), { recursive: true })
 await writeFile(output, `${JSON.stringify(index, null, 2)}\n`)
 console.log(`Wrote ${output} for ${manifest.name}@${manifest.version} at ${commit}`)
+console.log(`Installs as ${target.spec}`)
