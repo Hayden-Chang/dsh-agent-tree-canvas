@@ -31,7 +31,7 @@ kind: "package-bundle"
 
 在 Web profile 中启用这个可选 bundle，然后打开侧边栏的**Agent 树画布**。自定义组合可以在标准 Web 服务之外加载本包的 [bundle 补丁](cordis.patch.yml)。插件使用专用对话预设创建 Session，默认没有代码执行或文件系统工具。
 
-这是面向原版 DSH **0.2.2-rc.1** 的独立插件（Node >=24.9）。通过标准插件管理器安装构建产物即可，无需 DSH 源码或重新编译 DSH：
+这是面向原版 DSH **0.2.2-rc.1 及更新的 0.2.2 rc 版本**的独立插件（Node >=24.9），声明范围 `>=0.2.2-rc.1 <0.2.3`。预设使用的 persona 与 compaction-basic 由宿主 profile 提供，插件不再安装自己的副本。通过标准插件管理器安装构建产物即可，无需 DSH 源码或重新编译 DSH：
 
 ```sh
 dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.7.tgz

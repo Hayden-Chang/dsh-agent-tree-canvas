@@ -51,10 +51,10 @@ importers:
         specifier: 0.2.2-rc.1
         version: 0.2.2-rc.1(@deepseek-ai/cordis@4.1.0)
       '@deepseek-ai/dsh-compaction-basic':
-        specifier: 0.2.2-rc.1
+        specifier: '>=0.2.2-rc.1 <0.2.3'
         version: 0.2.2-rc.1(592fb191f223389aeb9bc070bb3fc1f9)
       '@deepseek-ai/dsh-persona':
-        specifier: 0.2.2-rc.1
+        specifier: '>=0.2.2-rc.1 <0.2.3'
         version: 0.2.2-rc.1(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-system-prompt@0.2.2-rc.1(@deepseek-ai/cordis@4.1.0)(@deepseek-ai/dsh-llm@0.2.2-rc.1(@deepseek-ai/cordis@4.1.0))(@deepseek-ai/dsh-scope@0.2.2-rc.1(@deepseek-ai/cordis@4.1.0)))
       '@deepseek-ai/schemastery':
         specifier: 3.19.0
