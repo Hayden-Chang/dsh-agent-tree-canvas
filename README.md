@@ -1,10 +1,10 @@
 # Agent tree canvas
 
-独立的 DeepSeek Harness 插件。安装到原版 **DSH 0.2.2-rc.1** 即可使用，不需要修改或重新编译 DSH。插件版本与 DSH 版本独立管理。
+独立的 DeepSeek Harness 插件。安装到原版 **DSH 0.2.2-rc.1 及更新的 0.2.2 rc 版本**即可使用，不需要修改或重新编译 DSH。插件版本与 DSH 版本独立管理。
 
 ## 安装
 
-需要 Node >=24.9，以及已安装的 DSH 0.2.2-rc.1。
+需要 Node >=24.9，以及已安装的 DSH 0.2.2-rc.1 或更新的 0.2.2 rc 版本。
 
 ```sh
 dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.8.tgz
@@ -75,11 +75,11 @@ node scripts/preview.mjs --host 127.0.0.1 --port 3085
 
 ## 实现范围
 
-Host 使用原版 DSH 的 Agent registry、Session controller、投影、存储域和 Remote 注册。Client 使用原版嵌入式会话、选区插槽和输入框 reference 扩展；继承消息隐藏、引用来源定位、引用预览及分支颜色全部由插件实现。没有 DSH 补丁、`patch-package`、安装后修改宿主文件或运行时替换 DSH 方法。
+Host 使用原版 DSH 的 Agent registry、Session controller、投影、存储域和 Remote 注册。预设里挂载的 `persona` 与 `compaction-basic` 由宿主 profile 提供（peer 依赖），插件不在 profile 里安装自己的副本，避免顶掉宿主的同名行。Client 使用原版嵌入式会话、选区插槽和输入框 reference 扩展；继承消息隐藏、引用来源定位、引用预览及分支颜色全部由插件实现。没有 DSH 补丁、`patch-package`、安装后修改宿主文件或运行时替换 DSH 方法。
 
 引用通过插件自己的 reference 编码保存来源，发送给模型时仅序列化引用文字。旧版草稿在载入前转换，转换前保存原始备份。会话和 `agent_tree_canvas` 存储格式保持兼容，旧名称的数据会自动导入；卸载插件不会删除这些数据。
 
-当前对 DSH 的兼容声明固定为 0.2.2-rc.1。原版 DOM 的 `data-*` 属性用于画布内展示适配；升级 DSH 前需重新运行浏览器回归。上游基线见 [UPSTREAM.md](UPSTREAM.md)。
+当前对 DSH 的兼容声明为 `>=0.2.2-rc.1 <0.2.3`：单元测试在 0.2.2-rc.1 上运行，界面在 0.2.2-rc.5 上做过浏览器验证。原版 DOM 的 `data-*` 属性用于画布内展示适配；升级 DSH 前需重新运行浏览器回归。上游基线见 [UPSTREAM.md](UPSTREAM.md)。
 
 Selected chat or summary text can generate a bounded tree of independent Sessions. Generated nodes retain their frozen selection, full path, and initial content for later conversation; editing their summaries does not rewrite that context. Delete buttons appear on node hover or keyboard focus. See the [plugin guide](packages/agent-tree-canvas/README.md) for limits and failure recovery.
 
