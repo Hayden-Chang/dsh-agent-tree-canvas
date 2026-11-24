@@ -1,7 +1,7 @@
 /** Keyless browser fixture: real submission/agent pipeline, deterministic model responses. */
 import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { LlmAdapter } from '../../packages/session-canvas/node_modules/@deepseek-ai/dsh-llm/lib/index.js'
+import { LlmAdapter } from '../../packages/agent-tree-canvas/node_modules/@deepseek-ai/dsh-llm/lib/index.js'
 
 export const inject = ['llm']
 class ExplanationAdapter extends LlmAdapter {

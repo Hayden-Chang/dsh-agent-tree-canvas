@@ -8,7 +8,7 @@
     "moduleResolution": "Bundler"
   },
   "include": [
-    "packages/session-canvas/tests/host.spec.ts",
-    "packages/session-canvas/tests/remote.spec.ts"
+    "packages/agent-tree-canvas/tests/host.spec.ts",
+    "packages/agent-tree-canvas/tests/remote.spec.ts"
   ]
 }

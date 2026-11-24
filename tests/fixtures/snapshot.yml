@@ -1,10 +1,10 @@
 version: 1
-scenario: session-canvas
+scenario: agent-tree-canvas
 profile: web
-composition: web-session-canvas
+composition: web-agent-tree-canvas
 recording: authored
 header:
-  class: web-session-canvas
+  class: web-agent-tree-canvas
   pin: true
 replay:
   override: true

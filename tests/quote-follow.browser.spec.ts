@@ -13,12 +13,12 @@ async function launchCanvasBrowser(seed?: (home: string) => Promise<void>, fallb
   const runtime = process.env.DSH_RUNTIME_ROOT
   if (!runtime) throw new Error('Set DSH_RUNTIME_ROOT to an installed DSH 0.2.2-rc.1 runtime containing node_modules')
   const home = await mkdtemp(join(tmpdir(), 'canvas-quote-follow-'))
-  const profile = join(home, 'profiles/web'), plugin = resolve(process.env.CANVAS_PACKAGE_DIR ?? 'packages/session-canvas')
+  const profile = join(home, 'profiles/web'), plugin = resolve(process.env.CANVAS_PACKAGE_DIR ?? 'packages/agent-tree-canvas')
   await mkdir(join(profile, 'node_modules/@deepseek-ai'), { recursive: true })
-  await symlink(plugin, join(profile, 'node_modules/@deepseek-ai/dsh-session-canvas'))
+  await symlink(plugin, join(profile, 'node_modules/@deepseek-ai/dsh-agent-tree-canvas'))
   await writeFile(join(profile, 'package.json'), JSON.stringify({ name: 'canvas-browser-test', private: true,
-    dependencies: { '@deepseek-ai/dsh-session-canvas': `link:${plugin}` },
-    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-session-canvas'] } },
+    dependencies: { '@deepseek-ai/dsh-agent-tree-canvas': `link:${plugin}` },
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-agent-tree-canvas'] } },
   }))
   await seed?.(home)
   if (explain) {
@@ -63,13 +63,13 @@ async function launchCanvasBrowser(seed?: (home: string) => Promise<void>, fallb
   const errors: string[] = []; page.on('pageerror', error => { errors.push(error.message) })
   await page.goto(url)
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await page.getByText('Session canvas', { exact: true }).first().click()
+  await page.getByText('Agent tree canvas', { exact: true }).first().click()
   return { page, errors, home }
 }
 
 it.each(['colors', 'navigation'] as const)('preserves child quote %s after clearing drafts and reloading', async (scenario) => {
   const { page, errors } = await launchCanvasBrowser()
-  const canvas = page.locator('[data-session-canvas]')
+  const canvas = page.locator('[data-agent-tree-canvas]')
   await canvas.getByRole('button', { name: 'New canvas', exact: true }).first().click()
   await canvas.getByRole('button', { name: 'New conversation', exact: true }).first().click()
   const parent = canvas.locator('[data-canvas-session]').first()
@@ -103,16 +103,16 @@ it.each(['colors', 'navigation'] as const)('preserves child quote %s after clear
   const children = canvas.locator('[data-canvas-session]'), red = children.nth(1), orange = children.nth(2)
   const checkColors = async () => {
     for (const [child, tone, index] of [[red, 'red', 0], [orange, 'orange', 1]] as const) {
-      await expect.poll(() => page.evaluate(tone => CSS.highlights.get(`session-canvas-quote-${tone}`)?.size ?? 0, tone)).toBe(1)
+      await expect.poll(() => page.evaluate(tone => CSS.highlights.get(`agent-tree-canvas-quote-${tone}`)?.size ?? 0, tone)).toBe(1)
       expect(await selected.nth(index).evaluate((element, tone) => {
-        const range = [...CSS.highlights.get(`session-canvas-quote-${tone}`)!][0] as Range
+        const range = [...CSS.highlights.get(`agent-tree-canvas-quote-${tone}`)!][0] as Range
         return element.contains(range.startContainer) && range.toString() === 'Repeated selected passage.'
       }, tone)).toBe(true)
       const color = await child.evaluate(element => getComputedStyle(element).getPropertyValue('--canvas-branch').trim())
       const colors = await selected.nth(index).evaluate((element, { tone, color }) => {
         const sample = document.createElement('span'); sample.style.backgroundColor = `color-mix(in srgb, ${color} 35%, transparent)`; element.append(sample)
         const expected = getComputedStyle(sample).backgroundColor; sample.remove()
-        return { actual: getComputedStyle(element, `::highlight(session-canvas-quote-${tone})`).backgroundColor, expected, color }
+        return { actual: getComputedStyle(element, `::highlight(agent-tree-canvas-quote-${tone})`).backgroundColor, expected, color }
       }, { tone, color })
       await writeFile(resolve(`.artifacts/quote-colors-${tone}.json`), JSON.stringify(colors))
       if (colors.actual !== colors.expected) await page.screenshot({ path: resolve('.artifacts/quote-follow-color-failure.png'), fullPage: true })
@@ -136,7 +136,7 @@ it.each(['colors', 'navigation'] as const)('preserves child quote %s after clear
   await red.getByRole('button', { name: 'Remove quote', exact: true }).click()
   await orange.getByRole('button', { name: 'Remove quote', exact: true }).click()
   await page.reload()
-  await page.getByText('Session canvas', { exact: true }).first().click()
+  await page.getByText('Agent tree canvas', { exact: true }).first().click()
   await canvas.waitFor(); await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
   if (scenario === 'colors') await checkColors(); if (scenario === 'navigation') { await clickAndCheck(red, 0); await clickAndCheck(orange, 1) }
   const shots = resolve('.artifacts'); await mkdir(shots, { recursive: true })
@@ -174,7 +174,7 @@ async function seedChat(home: string, title?: string) {
   await mkdir(directory, { recursive: true }); await mkdir(join(home, 'storages'), { recursive: true })
   // The stock log reader requires the header in its own Zstandard frame.
   await writeFile(join(directory, 'session.v4.jsonl.zstd'), Buffer.concat(fixture.map(record => zstdCompressSync(JSON.stringify(record) + '\n'))))
-  await writeFile(join(home, 'storages/session_canvas.json'), JSON.stringify({ unit: { name: 'session_canvas', version: 1 }, global: null,
+  await writeFile(join(home, 'storages/agent_tree_canvas.json'), JSON.stringify({ unit: { name: 'agent_tree_canvas', version: 1 }, global: null,
     tables: { canvases: { [canvasId]: { id: canvasId, title: 'Chat quote regression', revision: 1, nodes: [
       { sessionId: id, parentId: null, forkSeq: null, title: 'Parent', x: 80, y: 80, mode: 'chat', collapsed: false },
     ] } }, summaries: { [id]: { sessionId: id, markdown: '', revision: 0, version: 0, versions: [], excerpts: [], draft: null } } },
@@ -194,7 +194,7 @@ async function selectPassage(source: Locator) {
 
 it.each(['chat', 'summary'] as const)('auto-explains selected %s text in one child with inherited context', async (mode) => {
   const { page, errors, home } = await launchCanvasBrowser(seedChat, false, true)
-  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
+  const canvas = page.locator('[data-agent-tree-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
   let source = parent.locator('[data-chat-flow-kind="assistant-step"]:not([hidden]) [data-text-interaction-source]:visible code').nth(1)
   if (mode === 'summary') {
     await parent.getByRole('button', { name: 'Summary', exact: true }).click()
@@ -222,18 +222,18 @@ it.each(['chat', 'summary'] as const)('auto-explains selected %s text in one chi
   expect(JSON.stringify(messages)).toContain('Explain snapshot branching.')
   expect(await child.locator('[data-composer-input]').innerText()).not.toContain('Please explain')
   await expect.poll(() => child.getAttribute('data-focused')).toBe('true')
-  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await page.reload(); await page.getByText('Agent tree canvas', { exact: true }).first().click()
   await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
   expect(await canvas.locator('[data-canvas-session]').count()).toBe(2)
   await expect.poll(() => child.innerText()).toContain('This is the explanation of the selected passage')
-  await expect.poll(() => page.evaluate(() => [...CSS.highlights.get('session-canvas-quote-red') ?? []].map(range => range.toString()))).toEqual(['application_dev'])
+  await expect.poll(() => page.evaluate(() => [...CSS.highlights.get('agent-tree-canvas-quote-red') ?? []].map(range => range.toString()))).toEqual(['application_dev'])
   await page.screenshot({ path: resolve(`.artifacts/explain-child-${mode}.png`), fullPage: true })
   expect(errors).toEqual([])
 })
 
 it('saves learning checkboxes at the bottom right and enforces child completion across views and reloads', async () => {
   const { page, errors } = await launchCanvasBrowser(seedChat)
-  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
+  const canvas = page.locator('[data-agent-tree-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
   const parentCheck = parent.getByRole('checkbox', { name: 'Learned', exact: true })
   await parent.locator('[data-composer-input]').waitFor()
   expect(await parentCheck.isChecked()).toBe(false)
@@ -273,7 +273,7 @@ it('saves learning checkboxes at the bottom right and enforces child completion 
   expect(await canvas.locator('[data-canvas-world]').getAttribute('style')).toBe(viewport)
   await parentCheck.click()
   await expect.poll(() => parentCheck.isChecked()).toBe(true)
-  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await page.reload(); await page.getByText('Agent tree canvas', { exact: true }).first().click()
   await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
   await expect.poll(() => parentCheck.isChecked()).toBe(true)
   expect(await childCheck.isChecked()).toBe(true)
@@ -308,7 +308,7 @@ it('saves learning checkboxes at the bottom right and enforces child completion 
 
 it('chooses between overlapping summary links by current child name', async () => {
   const { page, errors } = await launchCanvasBrowser(seedChat)
-  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
+  const canvas = page.locator('[data-agent-tree-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
   await parent.getByRole('button', { name: 'Summary', exact: true }).click()
   await parent.getByRole('button', { name: 'Edit Markdown', exact: true }).click()
   const editor = parent.getByRole('textbox', { name: 'Edit Markdown', exact: true })
@@ -349,7 +349,7 @@ it('chooses between overlapping summary links by current child name', async () =
 
 it('pans twelve retained conversations without changing their layout or wheel navigation', async () => {
   const { page, errors } = await launchCanvasBrowser(seedChat)
-  const canvas = page.locator('[data-session-canvas]')
+  const canvas = page.locator('[data-agent-tree-canvas]')
   for (let index = 1; index < 12; index++) await canvas.getByRole('button', { name: 'New conversation', exact: true }).click()
   await expect.poll(() => canvas.locator('[data-composer-input]').count()).toBe(12)
   await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
@@ -396,7 +396,7 @@ it('pans twelve retained conversations without changing their layout or wheel na
 
 it('keeps connectors attached while dragging at reduced zoom, after saving, and when cancelling', async () => {
   const { page, errors } = await launchCanvasBrowser(seedChat)
-  const canvas = page.locator('[data-session-canvas]')
+  const canvas = page.locator('[data-agent-tree-canvas]')
   const parent = canvas.locator('[data-canvas-session="session-quoted-chat"]')
   const source = parent.locator('[data-chat-flow-kind="assistant-step"]:not([hidden]) [data-text-interaction-source]:visible code').nth(1)
   await source.scrollIntoViewIfNeeded()
@@ -448,7 +448,7 @@ it('keeps connectors attached while dragging at reduced zoom, after saving, and 
   await expect.poll(() => canvas.getByRole('button', { name: 'New conversation', exact: true }).isEnabled()).toBe(true)
   const saved = await position(child)
   expect(saved).toEqual({ x: before.x + 220, y: before.y + 140 })
-  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await page.reload(); await page.getByText('Agent tree canvas', { exact: true }).first().click()
   await child.locator('[data-composer-input]').waitFor()
   expect(await position(child)).toEqual(saved)
   await halfSize(); await assertAttached()
@@ -474,7 +474,7 @@ it('keeps connectors attached while dragging at reduced zoom, after saving, and 
 
 it('shows the DSH conversation name and persists manual edits through the header control', async () => {
   const { page, errors } = await launchCanvasBrowser(home => seedChat(home, 'Generated conversation name'))
-  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
+  const canvas = page.locator('[data-agent-tree-canvas]'), parent = canvas.locator('[data-canvas-session]').first()
   const label = 'Edit conversation name'
   await expect.poll(() => parent.locator('header span[title]').innerText()).toBe('Generated conversation name')
   await parent.getByRole('button', { name: label, exact: true }).click()
@@ -483,7 +483,7 @@ it('shows the DSH conversation name and persists manual edits through the header
   await page.screenshot({ path: resolve('.artifacts/session-name-editing.png'), fullPage: true })
   await input.press('Enter')
   await expect.poll(() => parent.locator('header span[title]').innerText()).toBe('我自己起的名字')
-  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await page.reload(); await page.getByText('Agent tree canvas', { exact: true }).first().click()
   await expect.poll(() => parent.locator('header span[title]').innerText()).toBe('我自己起的名字')
   await parent.getByRole('button', { name: label, exact: true }).click()
   await input.fill('Cancelled edit'); await input.press('Escape')
@@ -494,7 +494,7 @@ it('shows the DSH conversation name and persists manual edits through the header
 
 it.each(['native', 'fallback'] as const)('colors and follows a real chat quote using %s highlights', async (mode) => {
   const { page, errors } = await launchCanvasBrowser(seedChat, mode === 'fallback')
-  const canvas = page.locator('[data-session-canvas]'), parent = canvas.locator('[data-canvas-session="session-quoted-chat"]')
+  const canvas = page.locator('[data-agent-tree-canvas]'), parent = canvas.locator('[data-canvas-session="session-quoted-chat"]')
   const source = parent.locator('[data-chat-flow-kind="assistant-step"]:not([hidden]) [data-text-interaction-source]:visible code').nth(1)
   await source.waitFor()
   await source.scrollIntoViewIfNeeded()
@@ -516,8 +516,8 @@ it.each(['native', 'fallback'] as const)('colors and follows a real chat quote u
   })).toEqual([true, false])
   const assertColor = async () => {
     if (mode === 'native') {
-      await expect.poll(() => page.evaluate(() => [...CSS.highlights.get('session-canvas-quote-red') ?? []].map(range => range.toString()))).toEqual(['application_dev'])
-      expect(await source.evaluate(element => element.contains([...CSS.highlights.get('session-canvas-quote-red')!][0]!.startContainer))).toBe(true)
+      await expect.poll(() => page.evaluate(() => [...CSS.highlights.get('agent-tree-canvas-quote-red') ?? []].map(range => range.toString()))).toEqual(['application_dev'])
+      expect(await source.evaluate(element => element.contains([...CSS.highlights.get('agent-tree-canvas-quote-red')!][0]!.startContainer))).toBe(true)
     } else {
       await expect.poll(() => parent.locator('[data-canvas-quote-overlay] [data-quote-tone="red"]').count()).toBe(1)
       const marks = parent.locator('[data-canvas-quote-overlay] [data-quote-tone="red"]')
@@ -552,7 +552,7 @@ it.each(['native', 'fallback'] as const)('colors and follows a real chat quote u
   await parent.getByRole('button', { name: /^Completed in /u }).click()
   await assertColor(); await assertFollow(true)
   await child.getByRole('button', { name: 'Remove quote', exact: true }).click()
-  await page.reload(); await page.getByText('Session canvas', { exact: true }).first().click()
+  await page.reload(); await page.getByText('Agent tree canvas', { exact: true }).first().click()
   await canvas.getByRole('button', { name: 'Fit map', exact: true }).click()
   await assertColor(); await assertFollow()
   if (mode === 'fallback') {

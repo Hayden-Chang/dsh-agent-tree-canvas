@@ -11,9 +11,9 @@ export default defineConfig({
   } }],
   test: {
     projects: [
-      { extends: true, test: { name: 'host', execArgv, environment: 'node', include: ['packages/session-canvas/tests/host.spec.ts', 'packages/session-canvas/tests/remote.spec.ts'] } },
+      { extends: true, test: { name: 'host', execArgv, environment: 'node', include: ['packages/agent-tree-canvas/tests/host.spec.ts', 'packages/agent-tree-canvas/tests/remote.spec.ts'] } },
       { extends: true, test: { name: 'client', execArgv, environment: 'jsdom', environmentOptions: { jsdom: { url: 'http://localhost/' } },
-        include: ['packages/session-canvas/tests/*.client.spec.ts'], setupFiles: ['./tests/client-setup.ts'] } },
+        include: ['packages/agent-tree-canvas/tests/*.client.spec.ts'], setupFiles: ['./tests/client-setup.ts'] } },
     ],
     maxWorkers: 4,
   },

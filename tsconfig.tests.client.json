@@ -8,9 +8,9 @@
     "moduleResolution": "Bundler"
   },
   "include": [
-    "packages/session-canvas/src/client/**/*.ts",
-    "packages/session-canvas/src/client/**/*.tsx",
-    "packages/session-canvas/tests/*.client.spec.ts",
-    "packages/session-canvas/src/css-modules.d.ts"
+    "packages/agent-tree-canvas/src/client/**/*.ts",
+    "packages/agent-tree-canvas/src/client/**/*.tsx",
+    "packages/agent-tree-canvas/tests/*.client.spec.ts",
+    "packages/agent-tree-canvas/src/css-modules.d.ts"
   ]
 }

@@ -45,7 +45,7 @@ importers:
         specifier: ~4.5.7
         version: 4.5.7(@types/react@18.3.31)(immer@10.2.0)(react@18.3.1)
 
-  packages/session-canvas:
+  packages/agent-tree-canvas:
     dependencies:
       '@deepseek-ai/dsh-brand':
         specifier: 0.2.2-rc.1

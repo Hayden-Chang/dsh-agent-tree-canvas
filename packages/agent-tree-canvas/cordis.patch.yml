@@ -1,0 +1,4 @@
+# Optional Agent tree canvas over the Web profile.
+- insert:
+    - id: agent-tree-canvas
+      name: '@deepseek-ai/dsh-agent-tree-canvas'

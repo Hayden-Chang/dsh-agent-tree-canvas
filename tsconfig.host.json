@@ -2,7 +2,7 @@
   "files": [],
   "references": [
     {
-      "path": "packages/session-canvas/tsconfig.host.json"
+      "path": "packages/agent-tree-canvas/tsconfig.host.json"
     }
   ]
 }

@@ -14,5 +14,5 @@ export default defineConfig({
   } }],
   resolve: { alias: { '@stock/scaffold': resolve(stock, 'apps/web/tests/scaffold.ts'),
     '@stock/support': resolve(stock, 'apps/web/tests/support.ts'), '@stock/llm': resolve(stock, 'packages/llm/llm/src/index.ts') } },
-  test: { execArgv, include: [process.env.CANVAS_REAL_MODEL === '1' ? 'tests/mindmap-quality.e2e.ts' : 'tests/session-canvas.e2e.ts'], testTimeout: 180_000, hookTimeout: 120_000, fileParallelism: false },
+  test: { execArgv, include: [process.env.CANVAS_REAL_MODEL === '1' ? 'tests/mindmap-quality.e2e.ts' : 'tests/agent-tree-canvas.e2e.ts'], testTimeout: 180_000, hookTimeout: 120_000, fileParallelism: false },
 })
