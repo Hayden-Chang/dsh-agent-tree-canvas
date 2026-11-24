@@ -13,6 +13,18 @@ dsh web
 
 在侧边栏打开「Agent 树画布」。模型和 API 凭据仍通过 DSH 的设置配置。`DSH_HOME` 决定使用哪份配置和数据；替换旧开发版本时保持原来的 `DSH_HOME` 和浏览器地址，才能继续使用原有会话、画布和本地草稿。
 
+### 通过插件索引安装
+
+本仓库发布 dsh 插件索引（index.json 格式 1）。在 **Plugins → Experimental plugins** 打开 **Custom plugin indexes**，然后在 **Discover → Add index source** 添加：
+
+```
+https://raw.githubusercontent.com/Hayden-Chang/dsh-agent-tree-canvas/main/market/index.json
+```
+
+在 Discover 里选择本插件并确认安装。索引从 git commit 安装，pnpm 需要运行包自己的
+`prepare` 构建脚本；dsh 会提示一次，选择 **Allow these scripts and retry** 即可。
+生成和更新索引见 [market/README.md](market/README.md)。
+
 从 0.1.7 升级且自定义过脑图 token 额度时，请查看[脑图配置升级说明](docs/upgrade-guide/v0.1.7/mindmap-token-budget/guide.zh.md)。
 
 ## 从 dsh-session-canvas 改名升级
