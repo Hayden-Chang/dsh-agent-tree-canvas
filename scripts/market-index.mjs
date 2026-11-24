@@ -83,6 +83,13 @@ const manifest = JSON.parse(readAt(`${packagePath}/package.json`))
 
 if (!manifest.repository?.url || !manifest.repository.directory) throw new Error(`${packagePath}/package.json must declare repository.url and repository.directory`)
 if (!manifest.engines?.dsh) throw new Error(`${packagePath}/package.json must declare engines.dsh`)
+for (const input of ['scripts/build.mjs', 'tsconfig.base.json', 'tsconfig.host.json', 'tsconfig.client.json']) {
+  try {
+    git('cat-file', '-e', `${commit}:${packagePath}/${input}`)
+  } catch {
+    throw new Error(`${commit} is not installable: ${packagePath}/${input} is missing, so a prepare build would fail`)
+  }
+}
 if (manifest.scripts?.prepare !== 'node scripts/build.mjs') {
   throw new Error(`${commit} is not installable: its ${packagePath}/package.json has no prepare build, so a git install would ship no entry points`)
 }

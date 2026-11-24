@@ -34,7 +34,7 @@ const result = await build({ absWorkingDir: directory, entryPoints: ['src/client
   plugins: [{ name: 'plugin-owned-css', setup(builder) {
     builder.onLoad({ filter: /\.module\.css$/ }, async ({ path }) => {
       const css = transform({ filename: path, code: await readFile(path), cssModules: { pattern: 'canvas_[local]_[hash]' } })
-      const names = Object.fromEntries(Object.entries(css.exports ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => [key, value.name]))
+      const names = Object.fromEntries(Object.entries(css.exports ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([key, value]) => [key, value.name]))
       return { loader: 'js', contents: `const style = document.createElement('style'); style.textContent = ${JSON.stringify(css.code.toString())}; document.head.append(style); export default ${JSON.stringify(names)};` }
     })
   } }],
