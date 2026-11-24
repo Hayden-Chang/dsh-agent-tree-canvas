@@ -8,7 +8,8 @@
     "test": "vitest run packages/agent-tree-canvas/tests",
     "pack": "pnpm --dir packages/agent-tree-canvas pack --pack-destination ../../dist",
     "typecheck": "tsc -p tsconfig.tests.host.json && tsc -p tsconfig.tests.client.json",
-    "test:web": "vitest run --config vitest.web.config.ts"
+    "test:web": "vitest run --config vitest.web.config.ts",
+    "market:index": "node scripts/market-index.mjs"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
@@ -22,6 +23,7 @@
     "playwright": "1.61.1",
     "zustand": "~4.5.7",
     "immer": "^10.1.1",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.5"
   }
 }

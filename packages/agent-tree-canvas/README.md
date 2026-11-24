@@ -34,7 +34,7 @@ Enable this optional bundle in a Web profile, then open **Agent tree canvas** in
 This is an independent plugin for unmodified DSH **0.2.2-rc.1 or a later 0.2.2 rc release** (Node >=24.9). Its declared range is `>=0.2.2-rc.1 <0.2.3`; the persona and compaction presets it mounts come from the host profile, so the plugin installs no private copies of them. Install the built archive with the standard plugin manager; no DSH source checkout or DSH rebuild is required:
 
 ```sh
-dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.7.tgz
+dsh plugin --profile web add /absolute/path/deepseek-ai-dsh-agent-tree-canvas-0.1.8.tgz
 dsh web
 ```
 
