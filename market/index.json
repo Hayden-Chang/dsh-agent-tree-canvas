@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "title": {
+    "en": "Agent tree canvas",
+    "zh": "会话画布"
+  },
+  "plugins": [
+    {
+      "name": "@deepseek-ai/dsh-agent-tree-canvas",
+      "title": {
+        "en": "Agent tree canvas",
+        "zh": "Agent 树画布"
+      },
+      "description": {
+        "en": "Explore conversations as snapshot branches with editable Markdown summaries.",
+        "zh": "以快照分支组织对话，整理可编辑的 Markdown 总结。"
+      },
+      "author": "Hayden-Chang",
+      "homepage": "https://github.com/Hayden-Chang/dsh-agent-tree-canvas#readme",
+      "repository": {
+        "url": "https://github.com/Hayden-Chang/dsh-agent-tree-canvas",
+        "directory": "packages/agent-tree-canvas"
+      },
+      "versions": [
+        {
+          "version": "0.1.8",
+          "publishTimestamp": 1795515505,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/Hayden-Chang/dsh-agent-tree-canvas",
+            "commit": "71ba554b7fcbb68ee6d431154cf84ec84d4881a3",
+            "path": "packages/agent-tree-canvas"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.1 <0.2.3"
+          }
+        }
+      ]
+    }
+  ]
+}
