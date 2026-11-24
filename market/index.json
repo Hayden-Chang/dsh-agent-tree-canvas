@@ -8,11 +8,23 @@
     {
       "name": "@deepseek-ai/dsh-agent-tree-canvas",
       "title": {
+        "de": "Agentenbaum-Leinwand",
         "en": "Agent tree canvas",
+        "es": "Lienzo de árbol de agentes",
+        "fr": "Canevas d'arborescence d'agents",
+        "ja": "エージェントツリーキャンバス",
+        "pt": "Tela da árvore de agentes",
+        "ru": "Холст дерева агентов",
         "zh": "Agent 树画布"
       },
       "description": {
+        "de": "Ordnen Sie Gespräche in unabhängigen Zweigen mit bearbeitbaren Markdown-Zusammenfassungen.",
         "en": "Explore conversations as snapshot branches with editable Markdown summaries.",
+        "es": "Organiza conversaciones en ramas independientes con resúmenes Markdown editables.",
+        "fr": "Organisez vos conversations en branches indépendantes avec des résumés Markdown modifiables.",
+        "ja": "会話をスナップショットから分岐し、Markdown の要約を編集します。",
+        "pt": "Organize conversas em ramificações independentes com resumos Markdown editáveis.",
+        "ru": "Организуйте беседы в независимые ветви с редактируемыми сводками Markdown.",
         "zh": "以快照分支组织对话，整理可编辑的 Markdown 总结。"
       },
       "author": "Hayden-Chang",
@@ -24,11 +36,11 @@
       "versions": [
         {
           "version": "0.1.8",
-          "publishTimestamp": 1795515505,
+          "publishTimestamp": 1795516503,
           "source": {
             "type": "git",
             "url": "https://github.com/Hayden-Chang/dsh-agent-tree-canvas",
-            "commit": "71ba554b7fcbb68ee6d431154cf84ec84d4881a3",
+            "commit": "1451b721bb95fa5ef5366d28b32e93af85511198",
             "path": "packages/agent-tree-canvas"
           },
           "engines": {
