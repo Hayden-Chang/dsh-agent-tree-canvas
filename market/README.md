@@ -37,6 +37,8 @@ pnpm run market:index -- --commit "$(git rev-parse HEAD)"
 git add -A && git commit -m "Update plugin index"
 ```
 
+索引默认保留已列出的历史版本，发新版时旧版本仍可安装；只有在一个版本还没人装过时，才用 `--only-current` 把它从列表里去掉。
+
 脚本校验这个 commit 存在、包含 `prepare` 脚本和构建所需的
 `scripts/build.mjs`、`tsconfig.base.json`、`tsconfig.host.json`、`tsconfig.client.json`，
 再从该 commit（而不是工作区）读取 `package.json` 与**全部** `locale/*.json`，
@@ -52,6 +54,7 @@ git add -A && git commit -m "Update plugin index"
 | `--url <url>` | 索引将要托管的地址，用于解析相对图标 |
 | `--author <text>` | Discover 里显示的作者，默认 `Hayden-Chang` |
 | `--title <text>` | Discover 里显示的索引名 |
+| `--only-current` | 只列本次发布的版本，丢掉索引里已列的历史版本（用于没人装过的版本） |
 | `--check` | 只校验：已提交的索引与生成结果不一致时失败；不带 `--commit` 时比对索引里已记录的 commit |
 | `--help` | 打印用法 |
 

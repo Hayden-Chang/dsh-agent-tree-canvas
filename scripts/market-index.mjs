@@ -28,9 +28,10 @@ const usage = `Usage: pnpm run market:index -- [options]
   --url <url>           Address the index will be served from.
   --author <text>       Author shown in Discover (default: Hayden-Chang).
   --title <text>        Index name shown in Discover (default: Agent tree canvas).
+  --only-current        List only the version being released, dropping earlier ones.
   --check               Fail when ${indexPath} differs from the generated index.`
 
-const known = new Set(['commit', 'timestamp', 'url', 'author', 'title', 'check', 'help'])
+const known = new Set(['commit', 'timestamp', 'url', 'author', 'title', 'check', 'help', 'only-current'])
 const options = {}
 const arguments_ = process.argv.slice(2).filter(argument => argument !== '--')
 for (let index = 0; index < arguments_.length; index += 1) {
@@ -39,7 +40,7 @@ for (let index = 0; index < arguments_.length; index += 1) {
   const equals = argument.indexOf('=')
   const name = equals === -1 ? argument.slice(2) : argument.slice(2, equals)
   if (!known.has(name)) throw new Error(`Unknown option --${name}\n\n${usage}`)
-  if (name === 'check' || name === 'help') {
+  if (name === 'check' || name === 'help' || name === 'only-current') {
     if (equals !== -1) throw new Error(`--${name} takes no value`)
     options[name] = true
     continue
@@ -133,9 +134,10 @@ const current = {
 }
 
 // A version already listed stays listed, so an installed copy can still pick
-// it from the index's version list after a newer release appears.
+// it from the index's version list after a newer release appears. `--only-current`
+// drops that history, for a version no one could have installed.
 let released = []
-try {
+if (!options['only-current']) try {
   const existing = JSON.parse(await readFile(join(root, indexPath), 'utf8'))
   released = existing.plugins?.find(plugin => plugin.name === manifest.name)?.versions ?? []
 } catch {
