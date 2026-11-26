@@ -15,11 +15,13 @@ import type {} from '@deepseek-ai/dsh-workspace'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 
 /**
- * Sessions created before the rename record the previous preset id; mount the renamed preset for them.
+ * Canvas-owned preset IDs use the Web profile's standard composition.
  * @param id - preset id recorded in a Session header or projection.
- * @returns the preset this plugin registers today.
+ * @returns standard for Canvas-owned IDs, or the explicitly selected preset.
  */
-export function currentPreset(id: string): string { return id === LEGACY_PRESET_ID ? PRESET_ID : id }
+export function currentPreset(id: string): string {
+  return id === LEGACY_PRESET_ID || id === PRESET_ID ? 'standard' : id
+}
 
 /** The plugin retains disposal capabilities for its own canvas Sessions. */
 export class CanvasSessions {
@@ -33,7 +35,7 @@ export class CanvasSessions {
       get reasoningEffort() { return defaults.currentSelection().reasoningEffort } }
   }
 
-  private async setup(presetId = PRESET_ID): Promise<AgentSetup> {
+  private async setup(presetId = 'standard'): Promise<AgentSetup> {
     const preset = await this.ctx.agentPresets.resolve(currentPreset(presetId))
     return async agentCtx => {
       installModelSelection(agentCtx)
@@ -53,7 +55,7 @@ export class CanvasSessions {
       const stored = await this.ctx.sessionPersistence.stat(id)
       if (stored === undefined) continue
       using observed = await this.ctx.sessionQuery.observeSession(id)
-      const preset = observed.projections?.values.agentPreset ?? stored.header.agentPreset ?? PRESET_ID
+      const preset = observed.projections?.values.agentPreset ?? stored.header.agentPreset ?? 'standard'
       const handle = await this.ctx.agents.resume({ resumeSessionId: id,
         agentOptions: this.modelOptions(), setup: await this.setup(preset) })
       this.handles.set(id, handle)
@@ -66,7 +68,7 @@ export class CanvasSessions {
    */
   async create(): Promise<{ sessionId: SessionId }> {
     const sessionId = SessionId(`session-${randomUUID()}`)
-    const handle = await this.ctx.agents.create({ sessionId, meta: { cwd: process.cwd(), agentPreset: PRESET_ID },
+    const handle = await this.ctx.agents.create({ sessionId, meta: { cwd: process.cwd(), agentPreset: 'standard' },
       agentOptions: this.modelOptions(), setup: await this.setup() })
     this.handles.set(sessionId, handle)
     return { sessionId }
@@ -83,7 +85,7 @@ export class CanvasSessions {
     const boundary = SessionSeq(atSeq)
     if (source.events[boundary]?.seq !== boundary) throw new Error('Fork boundary is unavailable')
     const childId = SessionId(`session-${randomUUID()}`)
-    const preset = source.projections?.values.agentPreset ?? source.header.agentPreset ?? PRESET_ID
+    const preset = source.projections?.values.agentPreset ?? source.header.agentPreset ?? 'standard'
     const handle = await this.ctx.agents.create({ sessionId: childId,
       seed: buildForkSeed(source.events, boundary), inheritedEventCount: SessionLogOffset(boundary + 1),
       meta: { cwd: source.header.cwd, isSeeded: true, agentPreset: currentPreset(preset) },

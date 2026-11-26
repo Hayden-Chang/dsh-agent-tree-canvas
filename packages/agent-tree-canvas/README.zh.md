@@ -29,7 +29,7 @@ kind: "package-bundle"
 
 节点标题会随 DSH 保存的会话名称实时更新。子会话按自己的首条用户消息命名，在一轮对话结束后使用所选模型和 DSH 的命名组件生成短名称；生成失败时保留首条消息的简短名称，重新打开插件时会继续未完成的分支命名。点击标题左侧的铅笔可手动编辑：Enter 或移开焦点保存，Escape 取消；手动名称不会被后续自动结果覆盖。脑图节点在产生自己的会话名称之前保留原有主题名称。
 
-在 Web profile 中启用这个可选 bundle，然后打开侧边栏的**Agent 树画布**。自定义组合可以在标准 Web 服务之外加载本包的 [bundle 补丁](cordis.patch.yml)。插件使用专用对话预设创建 Session，默认没有代码执行或文件系统工具。
+在 Web profile 中启用这个可选 bundle，然后打开侧边栏的**Agent 树画布**。自定义组合可以在标准 Web 服务之外加载本包的 [bundle 补丁](cordis.patch.yml)。插件使用 Web profile 的 `standard` Agent 预设创建 Session，可使用该预设启用的工具。已记录为 `agent-tree-canvas` 或 `session-canvas` 的旧 Session 恢复和分叉时也会使用 `standard`，不会改写历史日志。原有插件级 `persona` 配置不再生效。
 
 这是面向原版 DSH **0.2.2-rc.1 起的 0.2.x 版本（不含 0.3）**的独立插件（Node >=24.9），声明范围 `>=0.2.2-rc.1 <0.3.0-0`。预设使用的 persona 与 compaction-basic 由宿主 profile 提供，插件不再安装自己的副本。通过标准插件管理器安装构建产物即可，无需 DSH 源码或重新编译 DSH：
 
@@ -67,7 +67,7 @@ Ctrl/Command＋滚轮和触控板捏合围绕指针缩放，不叠加速度增�
 部署配置为 `zoom.wheelSensitivity`（默认 `0.004`，范围 `0.0001–0.01`）和 `zoom.pinchSensitivity`（默认 `0.01`，范围 `0.001–0.05`）。按住修饰键滚动与触控板捏合使用独立增益：20px 的滚轮输入改变约 8% 的比例，2 单位的捏合输入改变约 2%。这些浏览器输入增益是本插件的默认值，并非 Xmind 内部参数。修改后需刷新浏览器。
 
 
-部署时可以配置 `persona`、`maxInputBytes`、`maxOutputTokens`、`timeoutMs` 和 `maxSummaryChars`。输入过大、请求失败、取消或回复截断时，现有总结与先前候选稿均保留。生成使用 Session 已选择的模型；没有明确选择时使用配置的默认模型。
+部署时可以配置 `maxInputBytes`、`maxOutputTokens`、`timeoutMs` 和 `maxSummaryChars`。对话 persona 和可用工具由 Web profile 的 `standard` 预设决定。输入过大、请求失败、取消或回复截断时，现有总结与先前候选稿均保留。生成使用 Session 已选择的模型；没有明确选择时使用配置的默认模型。
 
 -----
 
@@ -102,13 +102,11 @@ Client 为每个已挂载节点持有 Session 引用，并在嵌入式容器中�
 
 #### 模型看到什么
 
-聊天请求接收配置的 persona。独立总结请求接收系统指令，以及分组为 `inheritedContext` 和 `ownConversation` 的对话文本。
+聊天使用 Web profile 的 `standard` Agent 预设，包括其中配置的 persona 和启用的工具。独立总结请求接收系统指令，以及分组为 `inheritedContext` 和 `ownConversation` 的对话文本。
 
-##### 默认 persona
+##### Standard 预设 persona
 
-```markdown
-You are a helpful thinking and learning assistant. Explore the user's questions clearly and carefully.
-```
+对话使用 Web profile 的 `standard` 预设中配置的 persona。
 
 ##### 总结指令
 
@@ -118,7 +116,7 @@ Write a clear Markdown summary in the language used by the user. Summarize only 
 
 #### Token 影响
 
-Persona 会进入聊天输入。每次总结都会消耗完整的继承文本、新增文本、指令及输出对应的 token，重复生成会再次发起请求。切换视图、编辑和摘录不消耗模型 token。
+Standard 预设中的 persona 和指令会进入聊天输入。每次总结都会消耗完整的继承文本、新增文本、指令及输出对应的 token，重复生成会再次发起请求。切换视图、编辑和摘录不消耗模型 token。
 
 #### KV Cache 影响
 

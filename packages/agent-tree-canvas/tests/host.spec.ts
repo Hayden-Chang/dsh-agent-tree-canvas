@@ -65,7 +65,8 @@ async function fixture(root?: string) {
   ctx.llm.registerAdapter(['fixture'], adapter)
   const route = { provider: 'fixture', model: 'fixture' }
   ctx.provide('agentDefaultModel', { currentSelection: () => route } as Context['agentDefaultModel'])
-  ctx.provide('agentPresets', { register: async () => async () => {}, resolve: async (id: string) => ({ id }),
+  const resolvePreset = vi.fn(async (id: string) => ({ id }))
+  ctx.provide('agentPresets', { register: async () => async () => {}, resolve: resolvePreset,
     presetForSession: (session: Session) => session.header.agentPreset } as never)
   const live = new Map<SessionId, AgentHandle>(), stored = new Map<SessionId, Session>()
   const file = (id: SessionId) => join(path, 'sessions', id, 'session.v4.jsonl')
@@ -103,7 +104,7 @@ async function fixture(root?: string) {
   await ctx.plugin(SessionTitle, { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 })
   const plugin = ctx.plugin(AgentTreeCanvas, AgentTreeCanvas.Config({}))
   await plugin
-  return { ctx, api: ctx.agentTreeCanvas, adapter, path, plugin, created }
+  return { ctx, api: ctx.agentTreeCanvas, adapter, path, plugin, created, resolvePreset }
 }
 
 it('persists learning completion across remounts without changing conversation history or notes', async () => {
@@ -248,10 +249,11 @@ it('keeps a manual name when automatic naming completes late', async () => {
 })
 
 it('persists exact excerpts and manual versions across plugin remounts', async () => {
-  const { api, ctx, plugin, created } = await fixture()
+  const { api, ctx, plugin, created, resolvePreset } = await fixture()
   const canvas = await api.create('Research')
   const tree = await api.addRoot(canvas.id, 'A'), id = tree.nodes[0]!.sessionId
-  expect(created).toHaveBeenCalledWith(expect.objectContaining({ meta: { cwd: process.cwd(), agentPreset: 'agent-tree-canvas' } }))
+  expect(created).toHaveBeenCalledWith(expect.objectContaining({ meta: { cwd: process.cwd(), agentPreset: 'standard' } }))
+  expect(resolvePreset).toHaveBeenCalledWith('standard')
   const text = '  original **Markdown**\n\n```ts\nconst x = 1\n```\n'
   const added = await api.excerpt(id, text, 1)
   expect(added.markdown).toBe(text)
@@ -937,9 +939,10 @@ it('adopts canvases, notes, and unfinished deletions saved under the previous pl
   })
 })
 
-it('mounts the renamed preset for Sessions that recorded the previous preset id', () => {
-  expect(currentPreset('session-canvas')).toBe('agent-tree-canvas')
-  expect(currentPreset('agent-tree-canvas')).toBe('agent-tree-canvas')
+it('uses the standard preset for Canvas Sessions and preserves other explicit presets', () => {
+  expect(currentPreset('session-canvas')).toBe('standard')
+  expect(currentPreset('agent-tree-canvas')).toBe('standard')
+  expect(currentPreset('standard')).toBe('standard')
   expect(currentPreset('another-preset')).toBe('another-preset')
 })
 
