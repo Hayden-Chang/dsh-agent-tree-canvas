@@ -29,7 +29,7 @@ The checkbox at each node's bottom right marks it as **Learned** in Chat, Summar
 
 Node headers follow the durable DSH conversation name. Forked conversations are named from their own first human message after a turn completes, using the selected model and DSH's title executor; a short first-message name remains available if generation fails. Opening the plugin resumes unfinished branch naming. The header pencil edits the name: Enter or leaving the field saves, Escape cancels, and later automatic results cannot overwrite a manual name. Mind-map topics keep their existing labels until that conversation has its own title.
 
-Enable this optional bundle in a Web profile, then open **Agent tree canvas** in the sidebar. A custom composition can load its [bundle patch](cordis.patch.yml) alongside the standard Web services. The plugin starts new Sessions with its conversation preset, without code execution or filesystem tools.
+Enable this optional bundle in a Web profile, then open **Agent tree canvas** in the sidebar. A custom composition can load its [bundle patch](cordis.patch.yml) alongside the standard Web services. The plugin starts new Sessions with the Web profile’s `standard` Agent preset, including the tools enabled by that preset. Existing Sessions recorded as `agent-tree-canvas` or `session-canvas` also resume and fork with `standard`; their logs are unchanged. The former plugin-level `persona` setting no longer applies.
 
 This is an independent plugin for unmodified DSH **0.2.2-rc.1 or a later 0.2.x release (below 0.3)** (Node >=24.9). Its declared range is `>=0.2.2-rc.1 <0.3.0-0`; the persona and compaction presets it mounts come from the host profile, so the plugin installs no private copies of them. Install the built archive with the standard plugin manager; no DSH source checkout or DSH rebuild is required:
 
@@ -72,7 +72,7 @@ Ctrl/Command-wheel and trackpad pinch zoom around the pointer with no additional
 
 Deployment settings are `zoom.wheelSensitivity` (default `0.004`, range `0.0001–0.01`) and `zoom.pinchSensitivity` (`0.01`, range `0.001–0.05`). Modified wheel scrolling and trackpad pinch use independent gains: a 20px wheel delta changes scale by about 8%, while a 2-unit pinch delta changes it by about 2%. These browser input gains are plugin defaults, not Xmind's internal parameters. Reload the browser after changing them.
 
-The deployment can configure `persona`, `maxInputBytes`, `maxOutputTokens`, `timeoutMs`, and `maxSummaryChars`. Oversized inputs and failed, canceled, or truncated responses leave notes and prior candidates unchanged. Generation uses the Session's selected model, falling back to the configured default model when the Session has no explicit selection.
+The deployment can configure `maxInputBytes`, `maxOutputTokens`, `timeoutMs`, and `maxSummaryChars`. Conversation persona and available tools come from the Web profile’s `standard` preset. Oversized inputs and failed, canceled, or truncated responses leave notes and prior candidates unchanged. Generation uses the Session's selected model, falling back to the configured default model when the Session has no explicit selection.
 
 -----
 
@@ -107,13 +107,11 @@ The Client retains a Session reference for each mounted card and renders the sta
 
 #### What the model sees
 
-The conversation receives the configured persona. An independent summary request receives a system instruction and conversation text grouped into `inheritedContext` and `ownConversation`.
+The conversation uses the Web profile’s `standard` Agent preset, including its persona and enabled tools. An independent summary request receives a system instruction and conversation text grouped into `inheritedContext` and `ownConversation`.
 
-##### Default persona
+##### Standard preset persona
 
-```markdown
-You are a helpful thinking and learning assistant. Explore the user's questions clearly and carefully.
-```
+The conversation uses the persona configured by the Web profile’s `standard` preset.
 
 ##### Summary instruction
 
@@ -123,7 +121,7 @@ Write a clear Markdown summary in the language used by the user. Summarize only 
 
 #### Token effect
 
-The persona contributes to conversation input. Each summary consumes the full inherited and new text plus its instruction and output; repeated generation incurs another request. Mind-map generation normally makes two model calls for the selection and its draft; bounded output retries incur additional calls; each generated node contributes its frozen context when conversation first continues. Mode switching, editing, and excerpting use no model tokens.
+The standard preset persona and instructions contribute to conversation input. Each summary consumes the full inherited and new text plus its instruction and output; repeated generation incurs another request. Mind-map generation normally makes two model calls for the selection and its draft; bounded output retries incur additional calls; each generated node contributes its frozen context when conversation first continues. Mode switching, editing, and excerpting use no model tokens.
 
 #### KV Cache effect
 

@@ -25,14 +25,14 @@ https://raw.githubusercontent.com/Hayden-Chang/dsh-agent-tree-canvas/main/market
 `prepare` 构建脚本；dsh 会提示一次，选择 **Allow these scripts and retry** 即可。
 生成和更新索引见 [market/README.md](market/README.md)。
 
-从 0.1.7 升级且自定义过脑图 token 额度时，请查看[脑图配置升级说明](docs/upgrade-guide/v0.1.7/mindmap-token-budget/guide.zh.md)。
+从 0.1.7 升级且自定义过脑图 token 额度时，请查看[脑图配置升级说明](docs/upgrade-guide/v0.1.7/mindmap-token-budget/guide.zh.md)。从 0.1.9 升级时，请查看 [standard 预设升级说明](docs/upgrade-guide/v0.1.9/standard-agent-preset/guide.zh.md)。
 
 ## 从 dsh-session-canvas 改名升级
 
 项目、npm 包、插件 id、Agent 预设和界面名称都已改为 `agent-tree-canvas`。已有数据在首次启动时自动迁移一次：
 
 - 旧的 `session_canvas` / `session_canvas_deletions` 存储域会复制到新的 `agent_tree_canvas` / `agent_tree_canvas_deletions`。画布和总结的旧文件保留为备份；删除任务复制成功后从旧域移除，避免重复执行。
-- 旧会话里记录的 `session-canvas` 预设、`plugin:session-canvas/*` 记录和 `session-canvas-mindmap` 消息来源仍可读取，新分支写入新预设。
+- 旧会话里记录的 `session-canvas` 预设、`plugin:session-canvas/*` 记录和 `session-canvas-mindmap` 消息来源仍可读取。Canvas 自有的 `session-canvas` 和 `agent-tree-canvas` 预设 id 在恢复和分叉时映射为宿主的 `standard` 预设；会话日志不改写。
 - 浏览器中的总结恢复草稿和引用来源 id 在读取时迁移到新名称。
 - Web profile overlay（`$DSH_HOME/profiles/web/cordis.patch.yml`）里的条目 id 从 `session-canvas` 改为 `agent-tree-canvas`。卸载旧包时一并移除旧条目；自定义过 `config`（例如缩放增益、命名或脑图额度）时，把配置复制到新条目。
 
@@ -87,7 +87,7 @@ node scripts/preview.mjs --host 127.0.0.1 --port 3085
 
 ## 实现范围
 
-Host 使用原版 DSH 的 Agent registry、Session controller、投影、存储域和 Remote 注册。预设里挂载的 `persona` 与 `compaction-basic` 由宿主 profile 提供（peer 依赖），插件不在 profile 里安装自己的副本，避免顶掉宿主的同名行。Client 使用原版嵌入式会话、选区插槽和输入框 reference 扩展；继承消息隐藏、引用来源定位、引用预览及分支颜色全部由插件实现。没有 DSH 补丁、`patch-package`、安装后修改宿主文件或运行时替换 DSH 方法。
+Host 使用原版 DSH 的 Agent registry、Session controller、投影、存储域和 Remote 注册。画布会话挂载宿主 profile 的 `standard` Agent 预设，使用其中启用的工具；persona、compaction-basic 和工具实现都由宿主 profile 提供（peer 依赖），插件不在 profile 里安装副本。Client 使用原版嵌入式会话、选区插槽和输入框 reference 扩展；继承消息隐藏、引用来源定位、引用预览及分支颜色全部由插件实现。没有 DSH 补丁、`patch-package`、安装后修改宿主文件或运行时替换 DSH 方法。
 
 引用通过插件自己的 reference 编码保存来源，发送给模型时仅序列化引用文字。旧版草稿在载入前转换，转换前保存原始备份。会话和 `agent_tree_canvas` 存储格式保持兼容，旧名称的数据会自动导入；卸载插件不会删除这些数据。
 

@@ -20,7 +20,7 @@ import { AutosaveDelayMs } from './summary-options.ts'
 import { CanvasTitles, TitleOptions } from './titles.ts'
 import { CanvasSessions } from './session-lifecycle.ts'
 import { canvasDomain, deletionDomain, emptySummary } from './schema.ts'
-import { importLegacyDomains, LEGACY_PRESET_ID, PRESET_ID } from './legacy.ts'
+import { importLegacyDomains } from './legacy.ts'
 import { quoteOriginSchema } from './quote.ts'
 import { transcriptProjection } from './projection.ts'
 import { appendPluginRecord } from '@deepseek-ai/dsh-session'
@@ -33,7 +33,7 @@ import type {
   SaveSummaryRequest, SummaryDocument, SummaryVersion, UpdateNodeRequest, QuoteOrigin,
 } from './types.ts'
 
-/** Validated plugin resource bounds and the default conversation persona. */
+/** Validated plugin resource bounds for canvas features. */
 export interface Config extends MindmapLimits {
   /** Automatic naming of forked conversations, using their own first prompt. */
   readonly titles: TitleOptions
@@ -49,8 +49,6 @@ export interface Config extends MindmapLimits {
   readonly timeoutMs: number
   /** Maximum JavaScript string length of saved notes and summary candidates. */
   readonly maxSummaryChars: number
-  /** System instruction for new conversations created from the canvas. */
-  readonly persona: string
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -81,7 +79,6 @@ export default class AgentTreeCanvas extends TypertRemoteService {
     maxMindmapDepth: z.natural().min(1).max(20).default(8),
     maxMindmapNodeChars: z.natural().min(1).default(2000),
     maxSummaryChars: z.natural().min(1).default(1000000),
-    persona: z.string().default('You are a helpful thinking and learning assistant. Explore the user\'s questions clearly and carefully.'),
   })
   private domain!: Domain<typeof canvasDomain>
   private deletionJobs!: Domain<typeof deletionDomain>
@@ -128,23 +125,9 @@ export default class AgentTreeCanvas extends TypertRemoteService {
       if (state.context === null || state.delivered) return decision
       return { ...decision, messages: [mindmapMessage(state.context), ...decision.messages] }
     }, { prepend: true })
-    const unregisterPreset = await this.ctx.agentPresets.register({
-      id: PRESET_ID, name: 'Agent tree canvas', description: 'Conversation without code execution or filesystem tools.',
-      plugins: [
-        { name: '@deepseek-ai/dsh-persona', config: { prefix: this.config.persona, complete: true, includeRuntimeContext: false } },
-        { name: 'cordis:group', group: true, isolate: { compaction: true }, config: [
-          { name: '@deepseek-ai/dsh-compaction-basic' },
-        ] },
-      ],
-    })
-    this.ctx.effect(() => unregisterPreset)
     this.ctx.on('agent/created', ({ agent }) => {
       this.assertSessionAvailable(agent.id)
-      const preset = this.ctx.agentPresets.presetForSession(agent.session)
-      if (preset === PRESET_ID || preset === LEGACY_PRESET_ID) {
-        // The Agent scope retains this restriction even if the canvas UI is disabled.
-        agent.ctx.tools.restrict({ allow: [] })
-      }
+      return undefined
     })
     for (const [canvasId, job] of this.deletionJobs.table('jobs').entries()) {
       for (const id of job.sessionIds) this.deleting.add(id)
@@ -224,7 +207,7 @@ export default class AgentTreeCanvas extends TypertRemoteService {
   }
 
   /**
-   * Create a root using the conversation-only preset.
+   * Create a root using the standard Agent preset.
    * @param canvasId - owning canvas.
    * @param title - node label.
    * @returns the canvas containing the new Session.
